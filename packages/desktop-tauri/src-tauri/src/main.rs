@@ -21,21 +21,26 @@ fn get_daemon_status_json() -> String {
     let mut hostname = "localhost".to_string();
     let mut pid: u32 = 1;
 
-    if let Ok(content) = fs::read_to_string(&pid_file) {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(s) = val.get("serverId").and_then(|v| v.as_str()) {
-                server_id = s.to_string();
-            }
-            if let Some(l) = val.get("listen").and_then(|v| v.as_str()) {
-                listen = l.to_string();
-            }
-            if let Some(h) = val.get("hostname").and_then(|v| v.as_str()) {
-                hostname = h.to_string();
-            }
-            if let Some(p) = val.get("pid").and_then(|v| v.as_u64()) {
-                pid = p as u32;
+    // Wait up to 3 seconds for paseo.pid to be written if not immediately available
+    for _ in 0..6 {
+        if let Ok(content) = fs::read_to_string(&pid_file) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(s) = val.get("serverId").and_then(|v| v.as_str()) {
+                    server_id = s.to_string();
+                }
+                if let Some(l) = val.get("listen").and_then(|v| v.as_str()) {
+                    listen = l.to_string();
+                }
+                if let Some(h) = val.get("hostname").and_then(|v| v.as_str()) {
+                    hostname = h.to_string();
+                }
+                if let Some(p) = val.get("pid").and_then(|v| v.as_u64()) {
+                    pid = p as u32;
+                }
+                break;
             }
         }
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     serde_json::json!({
@@ -78,25 +83,22 @@ try {{
   // Automatically seed the local host registry in localStorage if not already present
   try {{
     const REGISTRY_KEY = '@paseo:daemon-registry';
-    const existing = localStorage.getItem(REGISTRY_KEY);
-    if (!existing || existing === '[]') {{
-      const localHostProfile = [{{
-        serverId: daemonData.serverId,
-        label: daemonData.hostname || 'Localhost',
-        appearance: {{ color: 'none', badgeDisplay: null }},
-        lifecycle: {{}},
-        connections: [{{
-          id: 'direct:' + daemonData.listen,
-          kind: 'direct',
-          address: daemonData.listen,
-          serverId: daemonData.serverId
-        }}],
-        preferredConnectionId: 'direct:' + daemonData.listen,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }}];
-      localStorage.setItem(REGISTRY_KEY, JSON.stringify(localHostProfile));
-    }}
+    const localHostProfile = [{{
+      serverId: daemonData.serverId,
+      label: daemonData.hostname || 'Localhost',
+      appearance: {{ color: 'none', badgeDisplay: null }},
+      lifecycle: {{}},
+      connections: [{{
+        id: 'direct:' + daemonData.listen,
+        kind: 'direct',
+        address: daemonData.listen,
+        serverId: daemonData.serverId
+      }}],
+      preferredConnectionId: 'direct:' + daemonData.listen,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }}];
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(localHostProfile));
   }} catch (e) {{}}
 }} catch (e) {{}}
 "#
