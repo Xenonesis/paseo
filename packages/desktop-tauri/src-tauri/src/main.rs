@@ -17,11 +17,10 @@ fn get_daemon_status_json() -> String {
     let pid_file = home.join("paseo.pid");
 
     let mut server_id = "srv_AUs6tLHBB3Fq".to_string();
-    let mut listen = "127.0.0.1:6768".to_string();
+    let mut listen = "127.0.0.1:6767".to_string();
     let mut hostname = "localhost".to_string();
     let mut pid: u32 = 1;
 
-    // Wait up to 3 seconds for paseo.pid to be written if not immediately available
     for _ in 0..6 {
         if let Ok(content) = fs::read_to_string(&pid_file) {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -69,6 +68,9 @@ fn main() {
         r#"
 try {{
   const daemonData = {status_json};
+  const listenEndpoint = (daemonData.listen || 'localhost:6767').replace(/^http:\/\//, '').replace(/\/.*$/, '');
+  const endpoint = listenEndpoint.startsWith('127.0.0.1') ? listenEndpoint.replace('127.0.0.1', 'localhost') : listenEndpoint;
+
   window.paseoDesktop = {{
     platform: 'win32',
     windowChromeMode: 'custom-windows',
@@ -80,7 +82,7 @@ try {{
     }}
   }};
 
-  // Automatically seed the local host registry in localStorage if not already present
+  // Seed valid StoredHostProfile matching StoredHostProfileSchema
   try {{
     const REGISTRY_KEY = '@paseo:daemon-registry';
     const localHostProfile = [{{
@@ -89,12 +91,12 @@ try {{
       appearance: {{ color: 'none', badgeDisplay: null }},
       lifecycle: {{}},
       connections: [{{
-        id: 'direct:' + daemonData.listen,
-        kind: 'direct',
-        address: daemonData.listen,
-        serverId: daemonData.serverId
+        id: 'direct:' + endpoint,
+        type: 'directTcp',
+        endpoint: endpoint,
+        useTls: false
       }}],
-      preferredConnectionId: 'direct:' + daemonData.listen,
+      preferredConnectionId: 'direct:' + endpoint,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }}];

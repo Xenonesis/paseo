@@ -20,7 +20,7 @@ fn resolve_runtime() -> Option<(PathBuf, PathBuf, PathBuf)> {
         if let Some(parent) = exe.parent() {
             let res_dir = parent.join("resources").join("server-dist");
             let res_node = res_dir.join("node.exe");
-            let res_script = res_dir.join("dist").join("scripts").join("supervisor-entrypoint.js");
+            let res_script = res_dir.join("dist").join("server").join("server").join("daemon-worker.js");
             if res_node.exists() && res_script.exists() {
                 return Some((res_dir, res_node, res_script));
             }
@@ -33,18 +33,18 @@ fn resolve_runtime() -> Option<(PathBuf, PathBuf, PathBuf)> {
             if !current.pop() {
                 break;
             }
-            let server_dist = current.join("packages").join("server").join("dist").join("scripts").join("supervisor-entrypoint.js");
-            if server_dist.exists() {
-                return Some((current, PathBuf::from("node"), server_dist));
+            let server_worker = current.join("packages").join("server").join("dist").join("server").join("server").join("daemon-worker.js");
+            if server_worker.exists() {
+                return Some((current, PathBuf::from("node"), server_worker));
             }
         }
     }
 
     // 3. Current dir
     if let Ok(cwd) = env::current_dir() {
-        let server_dist = cwd.join("packages").join("server").join("dist").join("scripts").join("supervisor-entrypoint.js");
-        if server_dist.exists() {
-            return Some((cwd, PathBuf::from("node"), server_dist));
+        let server_worker = cwd.join("packages").join("server").join("dist").join("server").join("server").join("daemon-worker.js");
+        if server_worker.exists() {
+            return Some((cwd, PathBuf::from("node"), server_worker));
         }
     }
 
@@ -56,7 +56,7 @@ pub fn start_daemon() -> Option<Child> {
 
     let mut cmd = Command::new(&node_bin);
     cmd.arg(&script_path)
-        .env("PASEO_LISTEN", "127.0.0.1:6768");
+        .env("PASEO_LISTEN", "127.0.0.1:6767");
 
     // Inherit NODE_PATH from global/user node environment if running installed
     if let Ok(appdata) = env::var("APPDATA") {
@@ -77,7 +77,7 @@ pub fn start_daemon() -> Option<Child> {
     }
 
     let child = cmd.spawn().ok()?;
-    std::thread::sleep(Duration::from_millis(1500));
+    std::thread::sleep(Duration::from_millis(2000));
     Some(child)
 }
 
