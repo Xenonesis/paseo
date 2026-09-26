@@ -1307,6 +1307,8 @@ function ThoughtSlot({
   isLastInSequence,
   defaultExpanded,
 }: ThoughtSlotProps) {
+  const isExecuting = status !== "ready";
+  const shouldExpand = defaultExpanded || isExecuting;
   const revealedText = useRevealedText(text, status === "ready" ? "complete" : "streaming");
   return (
     <ToolCallSlot
@@ -1316,8 +1318,8 @@ function ThoughtSlot({
       args={revealedText}
       status={status === "ready" ? "completed" : "executing"}
       isLastInSequence={isLastInSequence}
-      defaultExpanded={defaultExpanded}
-      forceInline={defaultExpanded}
+      defaultExpanded={shouldExpand}
+      forceInline={shouldExpand}
     />
   );
 }

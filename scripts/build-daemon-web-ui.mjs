@@ -21,7 +21,7 @@ function run(command, args, options) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
-      shell: false,
+      shell: process.platform === "win32",
       ...options,
     });
     child.on("error", reject);
@@ -61,7 +61,7 @@ async function compressFile(filePath) {
       createReadStream(filePath),
       createBrotliCompress({
         params: {
-          [zlibConstants.BROTLI_PARAM_QUALITY]: zlibConstants.BROTLI_MAX_QUALITY,
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 5,
         },
       }),
       createWriteStream(brotliPath),

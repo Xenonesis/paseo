@@ -2924,25 +2924,25 @@ function appendOpenCodeReasoningPart(
   state: OpenCodeEventTranslationState,
   events: AgentStreamEvent[],
 ): void {
-  if (!part.time.end) {
-    return;
-  }
+  const isComplete = Boolean(part.time?.end);
   const materialized = state.materializedParts.get(part.id);
   if (materialized?.closed) return;
   const emittedText = materialized?.messageId === part.messageID ? materialized.emittedText : "";
   if (!part.text.startsWith(emittedText)) {
-    state.onMaterializationMismatch?.({
-      partId: part.id,
-      messageId: part.messageID,
-      kind: "reasoning",
-    });
+    if (isComplete) {
+      state.onMaterializationMismatch?.({
+        partId: part.id,
+        messageId: part.messageID,
+        kind: "reasoning",
+      });
+    }
     return;
   }
   const suffix = part.text.slice(emittedText.length);
   state.materializedParts.set(part.id, {
     messageId: part.messageID,
     emittedText: part.text,
-    closed: true,
+    closed: isComplete,
   });
   if (suffix) {
     events.push({
@@ -2967,8 +2967,13 @@ function appendOpenCodeMessagePartDelta(
   }
   const messageRole = messageID ? state.messageRoles.get(messageID) : undefined;
   const knownPartType = partID ? state.partTypes.get(partID) : undefined;
-  const isReasoning = knownPartType === "reasoning" || field === "reasoning";
-
+  const isReasoning =
+    knownPartType === "reasoning" ||
+    field === "reasoning" ||
+    field === "reasoning_content" ||
+    field === "reasoning_details" ||
+    field === "thought" ||
+    field === "thinking";
   if (messageID && state.compactionSummaryMessageIds.has(messageID)) {
     return;
   }
