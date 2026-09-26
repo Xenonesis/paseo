@@ -100,6 +100,7 @@ import { runDesktopStartup } from "./desktop-startup.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
 import { installAppUpdateOnQuit } from "./features/auto-updater.js";
+import { setupMemoryOptimization } from "./features/memory-optimizer.js";
 import {
   buildAgentDeepLinkRoute,
   parseAgentDeepLink,
@@ -341,6 +342,8 @@ if (electronFlags) {
   }
   log.info("[electron-flags]", electronFlags);
 }
+
+setupMemoryOptimization(app);
 
 if (process.platform === "linux") {
   // Keep the desktop/dock identity independent of the wrapped Electron filename.

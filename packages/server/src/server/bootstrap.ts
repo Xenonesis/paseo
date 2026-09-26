@@ -719,6 +719,9 @@ export async function createPaseoDaemon(
   const fixedAllowedOrigins = [
     // Packaged desktop renderers use the custom paseo:// protocol scheme.
     "paseo://app",
+    // Tauri desktop renderers
+    "http://tauri.localhost",
+    "tauri://localhost",
     // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [
