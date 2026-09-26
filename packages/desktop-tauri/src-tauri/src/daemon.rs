@@ -1,8 +1,13 @@
 use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub struct DaemonState {
     pub process: Mutex<Option<Child>>,
@@ -38,14 +43,20 @@ pub fn start_daemon() -> Option<Child> {
         root.join("packages").join("server").join("dist").join("src").join("server").join("server").join("exports.js")
     };
 
-    println!("[tauri-daemon] Spawning node daemon from: {:?}", script_path);
-
-    Command::new("node")
-        .arg(&script_path)
+    let mut cmd = Command::new("node");
+    cmd.arg(&script_path)
         .env("PASEO_LISTEN", "127.0.0.1:6768")
         .current_dir(&root)
-        .spawn()
-        .ok()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd.spawn().ok()
 }
 
 pub fn stop_daemon(state: &DaemonState) {
