@@ -1,4 +1,5 @@
 use std::env;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -15,21 +16,39 @@ pub struct DaemonState {
 }
 
 fn resolve_runtime() -> Option<(PathBuf, PathBuf, PathBuf)> {
-    // 1. Installed location (resources/server-dist)
+    // 1. Check known local repo path on this machine first
+    let repo_candidates = [
+        PathBuf::from(r"C:\Users\Acer\Desktop\paseo"),
+    ];
+    for repo in &repo_candidates {
+        let script = repo.join("packages").join("server").join("dist").join("server").join("server").join("daemon-worker.js");
+        if script.exists() {
+            return Some((repo.clone(), PathBuf::from("node"), script));
+        }
+    }
+
+    // 2. Installed location (_up_/server-dist or resources/server-dist)
     if let Ok(exe) = env::current_exe() {
         if let Some(parent) = exe.parent() {
-            let res_dir = parent.join("resources").join("server-dist");
-            let res_node = res_dir.join("node.exe");
-            let res_script = res_dir.join("dist").join("server").join("server").join("daemon-worker.js");
-            if res_node.exists() && res_script.exists() {
-                return Some((res_dir, res_node, res_script));
+            let candidates = [
+                parent.join("_up_").join("server-dist"),
+                parent.join("server-dist"),
+                parent.join("resources").join("server-dist"),
+            ];
+            for res_dir in &candidates {
+                let res_node = res_dir.join("node.exe");
+                let res_script = res_dir.join("dist").join("server").join("server").join("daemon-worker.js");
+                if res_script.exists() {
+                    let node = if res_node.exists() { res_node } else { PathBuf::from("node") };
+                    return Some((res_dir.clone(), node, res_script));
+                }
             }
         }
     }
 
-    // 2. Local workspace fallback
+    // 3. Local workspace walking up from exe
     if let Ok(mut current) = env::current_exe() {
-        for _ in 0..8 {
+        for _ in 0..10 {
             if !current.pop() {
                 break;
             }
@@ -40,7 +59,7 @@ fn resolve_runtime() -> Option<(PathBuf, PathBuf, PathBuf)> {
         }
     }
 
-    // 3. Current dir
+    // 4. Current dir
     if let Ok(cwd) = env::current_dir() {
         let server_worker = cwd.join("packages").join("server").join("dist").join("server").join("server").join("daemon-worker.js");
         if server_worker.exists() {
@@ -67,9 +86,19 @@ pub fn start_daemon() -> Option<Child> {
     }
 
     cmd.current_dir(&work_dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdin(Stdio::null());
+
+    if let Some(mut home) = dirs::home_dir() {
+        home.push(".paseo");
+        let _ = std::fs::create_dir_all(&home);
+        home.push("daemon.log");
+        if let Ok(f) = OpenOptions::new().create(true).append(true).open(&home) {
+            if let Ok(f_err) = f.try_clone() {
+                cmd.stdout(Stdio::from(f));
+                cmd.stderr(Stdio::from(f_err));
+            }
+        }
+    }
 
     #[cfg(windows)]
     {
