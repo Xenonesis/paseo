@@ -148,5 +148,8 @@
     "react-dom": "19.1.0",
     "react-native-reanimated": "4.3.1",
     "react-native-worklets": "0.8.3"
+  },
+  "dependencies": {
+    "@opencode/client": "^2.0.10"
   }
 }
