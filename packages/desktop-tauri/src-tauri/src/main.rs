@@ -4,12 +4,19 @@
 mod daemon;
 mod editor;
 
+mod tray;
+
+use tray::setup_tray;
+mod dialogs;
+
+use dialogs::{pick_file, pick_folder};
 use daemon::{start_daemon, stop_daemon, DaemonState};
 use editor::open_in_editor;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_updater::UpdaterExt;
 
 fn get_daemon_status_json() -> String {
     let mut home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -78,6 +85,36 @@ try {{
       if (command === 'desktop_daemon_status' || command === 'start_desktop_daemon') {{
         return daemonData;
       }}
+      if (command === 'desktop_daemon_logs') {{
+        return {{ logPath: daemonData.home + '/daemon.log', contents: '' }};
+      }}
+      if (command === 'desktop_app_logs') {{
+        return {{ logPath: daemonData.home + '/app.log', contents: '' }};
+      }}
+      if (command === 'stop_desktop_daemon' || command === 'restart_desktop_daemon') {{
+        return daemonData;
+      }}
+      if (command === 'get_cli_install_status' || command === 'install_cli') {{
+        return {{ status: 'installed' }};
+      }}
+      if (command === 'desktop_update_diagnostics') {{
+        return {{ platform: 'win32', currentVersion: daemonData.version, targetVersion: null, targetVersionError: null, files: [] }};
+      }}
+      if (command === 'desktop_sandbox_diagnostics') {{
+        return {{ enabled: false, available: false, error: null }};
+      }}
+      if (command === 'read_legacy_skill_selection' || command === 'delete_legacy_skill_selection') {{
+        return null;
+      }}
+      if (command === 'migrate_legacy_desktop_settings') {{
+        return null;
+      }}
+      if (command === 'open_directory_dialog' || command === 'pick_folder') {{
+        return await window.__TAURI_INTERNALS__.invoke('pick_folder');
+      }}
+      if (command === 'open_file_dialog' || command === 'pick_file') {{
+        return await window.__TAURI_INTERNALS__.invoke('pick_file');
+      }}
       return null;
     }}
   }};
@@ -102,14 +139,52 @@ try {{
     }}];
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(localHostProfile));
   }} catch (e) {{}}
+  // Reset launchTarget to chat so New workspace composer opens in Chat mode
+  try {{
+    const PREF_KEY = '@paseo:create-agent-preferences';
+    const raw = localStorage.getItem(PREF_KEY);
+    if (raw) {{
+      const parsed = JSON.parse(raw);
+      if (parsed.launchTarget && parsed.launchTarget.kind !== 'chat') {{
+        parsed.launchTarget = {{ kind: 'chat' }};
+        localStorage.setItem(PREF_KEY, JSON.stringify(parsed));
+      }}
+    }}
+  }} catch (e) {{}}
+  // Setup deep-link listener from Tauri runtime
+  try {{
+    if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.listen) {{
+      window.__TAURI_INTERNALS__.listen('single-instance-deep-link', (event) => {{
+        const args = event.payload || [];
+        const deepLink = args.find(a => typeof a === 'string' && a.startsWith('paseo://'));
+        if (deepLink) {{
+          window.dispatchEvent(new CustomEvent('paseo:deep-link', {{ detail: deepLink }}));
+        }}
+      }});
+    }}
+  }} catch (e) {{}}
 }} catch (e) {{}}
 "#
     );
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.set_focus();
+                let _ = win.emit("single-instance-deep-link", argv);
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(state)
-        .invoke_handler(tauri::generate_handler![open_in_editor])
+        .invoke_handler(tauri::generate_handler![open_in_editor, pick_folder, pick_file])
         .setup(move |app| {
+            let _ = setup_tray(app.handle());
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("Paseo")
                 .inner_size(1280.0, 800.0)
@@ -117,6 +192,41 @@ try {{
                 .initialization_script(&bridge_script);
 
             let _ = win_builder.build();
+
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                match handle.updater() {
+                    Ok(updater) => {
+                        println!("[updater] Checking for desktop updates...");
+                        match updater.check().await {
+                            Ok(Some(update)) => {
+                                println!(
+                                    "[updater] Update available: v{} (current: v{})",
+                                    update.version, update.current_version
+                                );
+                                let _ = handle.emit(
+                                    "tauri://update-available",
+                                    serde_json::json!({
+                                        "version": update.version,
+                                        "currentVersion": update.current_version,
+                                        "body": update.body,
+                                    }),
+                                );
+                            }
+                            Ok(None) => {
+                                println!("[updater] Application is up to date");
+                            }
+                            Err(e) => {
+                                eprintln!("[updater] Failed to check for updates: {e}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[updater] Failed to initialize updater: {e}");
+                    }
+                }
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!())

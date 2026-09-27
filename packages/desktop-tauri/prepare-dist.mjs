@@ -17,10 +17,15 @@ fs.mkdirSync(targetDir, { recursive: true });
 console.log("Copying server dist (1,843 files)...");
 fs.cpSync(path.join(root, "packages/server/dist"), path.join(targetDir, "dist"), { recursive: true });
 
-// Copy node.exe directly so Tauri installed app always has Node available
+// Copy node runtime directly so Tauri installed app always has Node available
 console.log("Copying node runtime...");
-fs.copyFileSync(process.execPath, path.join(targetDir, "node.exe"));
-
+const nodeBinName = process.platform === "win32" ? "node.exe" : "node";
+fs.copyFileSync(process.execPath, path.join(targetDir, nodeBinName));
+if (process.platform !== "win32") {
+  try {
+    fs.copyFileSync(process.execPath, path.join(targetDir, "node.exe"));
+  } catch {}
+}
 // Copy server package.json
 fs.copyFileSync(path.join(root, "packages/server/package.json"), path.join(targetDir, "package.json"));
 

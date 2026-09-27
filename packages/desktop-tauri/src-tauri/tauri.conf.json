@@ -15,7 +15,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": ["nsis", "msi", "app", "dmg", "deb", "appimage"],
     "resources": [
       "../server-dist/**/*"
     ],
@@ -25,6 +25,24 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "languages": ["English"],
+        "installerHooks": "hooks/nsis-hooks.nsh"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "schemes": ["paseo"]
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExMjM1OApSV1RUUUVKVE40...=",
+      "endpoints": [
+        "https://github.com/getpaseo/paseo/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
