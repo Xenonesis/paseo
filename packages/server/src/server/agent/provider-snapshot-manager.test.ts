@@ -857,6 +857,7 @@ describe("ProviderSnapshotManager public surface", () => {
         claude: { enabled: false },
         codex: { enabled: false },
         copilot: { enabled: false },
+        omp: { enabled: false },
         opencode: { enabled: false },
         pi: { enabled: false },
       },

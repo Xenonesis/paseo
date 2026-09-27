@@ -601,14 +601,14 @@ test("built-in override applies env", () => {
   });
 });
 
-test("OMP is a disabled built-in backed by the real OMP adapter", async () => {
+test("OMP is an enabled built-in backed by the real OMP adapter", async () => {
   const omp = new FakeOmp();
   const registry = buildProviderRegistry(logger, { ompRuntime: omp });
 
   expect(registry.omp).toMatchObject({
     id: "omp",
     label: "Oh My Pi",
-    enabled: false,
+    enabled: true,
     derivedFromProviderId: null,
   });
   const client = registry.omp.createClient(logger);
@@ -624,14 +624,14 @@ test("OMP is a disabled built-in backed by the real OMP adapter", async () => {
   await session.close();
 });
 
-test("OMP can be enabled without custom provider boilerplate", () => {
+test("OMP can be disabled via provider overrides", () => {
   const registry = buildProviderRegistry(logger, {
     providerOverrides: {
-      omp: { enabled: true },
+      omp: { enabled: false },
     },
   });
 
-  expect(registry.omp.enabled).toBe(true);
+  expect(registry.omp.enabled).toBe(false);
 });
 
 test("new provider extending claude appears in registry", () => {
