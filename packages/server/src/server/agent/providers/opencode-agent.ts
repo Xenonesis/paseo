@@ -12,6 +12,8 @@ import {
   type TextPartInput as OpenCodeTextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createPathEquivalenceMatcher } from "../../../utils/path.js";
@@ -56,6 +58,7 @@ import {
   type SteerResult,
   type ToolCallDetail,
   type ToolCallTimelineItem,
+  type UsageReference,
 } from "../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
 import {
@@ -1500,6 +1503,7 @@ export class OpenCodeAgentClient implements AgentClient {
         false,
         unbindBridge,
         connectServer,
+        { ...process.env, ...this.runtimeSettings?.env, ...launchContext?.env },
       );
     } catch (error) {
       await connection.release();
@@ -1554,6 +1558,7 @@ export class OpenCodeAgentClient implements AgentClient {
         registeredAcquisition !== null,
         unbindBridge,
         connectServer,
+        { ...process.env, ...this.runtimeSettings?.env, ...launchContext?.env },
       );
     } catch (error) {
       await connection.release();
@@ -3284,7 +3289,7 @@ function isOpenCodeTerminalEvent(event: OpenCodeEvent, sessionId: string): boole
 }
 
 function isOpenCodeProviderInternalEvent(event: AgentStreamEvent): boolean {
-  return event.type === "provider_subagent";
+  return event.type === "provider_subagent" || event.type === "model_changed";
 }
 
 function readOpenCodeChildSessionInfo(value: unknown): OpenCodeChildSessionInfo | null {
@@ -3363,6 +3368,67 @@ interface OpenCodeServerConnection {
   events: OpenCodeEventSource;
   url: string;
   release: () => Promise<void>;
+}
+
+const openCodeOAuthAuthSchema = z
+  .object({
+    openai: z
+      .object({
+        type: z.literal("oauth"),
+        access: z.string().min(1),
+        accountId: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+const openCodeGoAuthSchema = z
+  .object({
+    "opencode-go": z
+      .object({ type: z.literal("api"), key: z.string().min(1) })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+async function readOpenCodeUsageAuth(env: NodeJS.ProcessEnv): Promise<unknown> {
+  try {
+    const content =
+      env.OPENCODE_AUTH_CONTENT ??
+      (await fs.readFile(
+        path.join(
+          env.XDG_DATA_HOME || path.join(env.HOME || os.homedir(), ".local", "share"),
+          "opencode",
+          "auth.json",
+        ),
+        "utf8",
+      ));
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+function resolveOpenCodeUsageReference(model: string, auth: unknown): UsageReference | null {
+  if (!auth) return null;
+  if (model.startsWith("openai/")) {
+    const parsed = openCodeOAuthAuthSchema.safeParse(auth);
+    if (!parsed.success) return null;
+    const credential = parsed.data.openai;
+    if (!credential) return null;
+    return {
+      source: "codex",
+      input: {
+        accessToken: credential.access,
+        ...(credential.accountId ? { accountId: credential.accountId } : {}),
+      },
+    };
+  }
+  const parsed = openCodeGoAuthSchema.safeParse(auth);
+  if (!parsed.success) return null;
+  const credential = parsed.data["opencode-go"];
+  if (!credential) return null;
+  return { source: "opencode-go", input: { apiKey: credential.key } };
 }
 
 class OpenCodeAgentSession implements AgentSession {
@@ -3453,6 +3519,7 @@ class OpenCodeAgentSession implements AgentSession {
     private readonly externallyDriven = false,
     releaseBridge?: () => void,
     connectServer?: () => Promise<OpenCodeServerConnection>,
+    private readonly usageEnv: NodeJS.ProcessEnv = process.env,
   ) {
     this.config = config;
     this.server = { client, events, url: serverUrl ?? "", release: releaseServer };
@@ -3555,6 +3622,13 @@ class OpenCodeAgentSession implements AgentSession {
       model: this.config.model ?? null,
       modeId: this.currentMode,
     };
+  }
+
+  async getUsageReference(): Promise<UsageReference | null> {
+    const model = this.config.model;
+    if (!model?.startsWith("openai/") && !model?.startsWith("opencode-go/")) return null;
+    const auth = await readOpenCodeUsageAuth(this.usageEnv);
+    return resolveOpenCodeUsageReference(model, auth);
   }
 
   async setModel(modelId: string | null): Promise<void> {
@@ -5351,6 +5425,7 @@ class OpenCodeAgentSession implements AgentSession {
 
   private async translateEvent(event: OpenCodeEvent): Promise<AgentStreamEvent[]> {
     const eventSessionId = getOpenCodeEventSessionId(event);
+    const runtimeModelChanged = this.syncRuntimeModel(event, eventSessionId);
     if (
       event.type !== "session.created" &&
       eventSessionId &&
@@ -5367,6 +5442,12 @@ class OpenCodeAgentSession implements AgentSession {
       }
     }
     const translated = translateOpenCodeEvent(event, this.createTranslationState());
+    if (runtimeModelChanged)
+      translated.push({
+        type: "model_changed",
+        provider: this.provider,
+        runtimeInfo: await this.getRuntimeInfo(),
+      });
     this.appendProviderSubagentEvents(event, translated);
 
     const events: AgentStreamEvent[] = [];
@@ -5405,6 +5486,20 @@ class OpenCodeAgentSession implements AgentSession {
     }
 
     return events;
+  }
+
+  private syncRuntimeModel(event: OpenCodeEvent, eventSessionId: string | null): boolean {
+    if (event.type !== "message.updated" || eventSessionId !== this.sessionId) return false;
+    const info = event.properties.info;
+    let model: string | undefined;
+    if (info.role === "assistant") model = resolveOpenCodeModelLookupKeyFromAssistantMessage(info);
+    if (info.role === "user" && info.model)
+      model = buildOpenCodeModelLookupKey(info.model.providerID, info.model.modelID);
+    if (!model || model === this.config.model) return false;
+    this.config.model = model;
+    this.selectedModelContextWindowMaxTokens =
+      this.resolveConfiguredModelContextWindowMaxTokens(model);
+    return true;
   }
 
   private async tryAutoApproveToolPermission(
