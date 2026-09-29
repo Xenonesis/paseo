@@ -207,11 +207,7 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
       this.screencastSession = session;
       this.screencastPage = page;
 
-      session.on("Page.screencastFrame", async (payload: {
-        data: string;
-        metadata?: { timestamp?: number; [key: string]: unknown };
-        sessionId: number;
-      }) => {
+      session.on("Page.screencastFrame", async (payload) => {
         try {
           const rawTs = payload.metadata?.timestamp;
           const timestamp =
