@@ -75,7 +75,9 @@ export function BrowserNavigationBar({
     let clean = addressInput.trim();
     if (!clean) return;
     if (!clean.startsWith("http://") && !clean.startsWith("https://") && !clean.startsWith("about:")) {
-      clean = `http://${clean}`;
+      clean = clean.startsWith("localhost") || clean.startsWith("127.0.0.1") || clean.startsWith("0.0.0.0")
+        ? `http://${clean}`
+        : `https://${clean}`;
     }
     onNavigate(clean);
   }, [addressInput, onNavigate]);

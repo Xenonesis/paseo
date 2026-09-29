@@ -8,6 +8,7 @@ import { BrowserTabBar, type BrowserTabItem } from "./browser-tab-bar";
 import { BrowserNavigationBar } from "./browser-navigation-bar";
 import { BrowserLoadFailureOverlay, parseHostFromUrl } from "./browser-load-failure-overlay";
 import { BrowserImportDialog } from "./browser-import-dialog";
+import { isLocalhostUrl, resolveIframeTargetUrl } from "./url-utils";
 
 export interface BrowserPaneViewProps {
   browserId: string;
@@ -65,6 +66,16 @@ export function BrowserPaneView({
 
   // Check reachability for localhost / dev servers
   const verifyReachability = useCallback(async (targetUrl: string, tabId: string) => {
+    // External websites are proxied by daemon, so they won't encounter CORS / X-Frame-Options issues
+    if (!isLocalhostUrl(targetUrl)) {
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId ? { ...t, hasLoadError: false, title: parseHostFromUrl(targetUrl) } : t,
+        ),
+      );
+      return;
+    }
+
     setTabs((prev) =>
       prev.map((t) => (t.id === tabId ? { ...t, isLoading: true } : t)),
     );
@@ -85,19 +96,9 @@ export function BrowserPaneView({
           );
         } catch {
           clearTimeout(timeout);
-          if (
-            targetUrl.includes("localhost") ||
-            targetUrl.includes("127.0.0.1") ||
-            targetUrl.includes("0.0.0.0")
-          ) {
-            setTabs((prev) =>
-              prev.map((t) => (t.id === tabId ? { ...t, hasLoadError: true } : t)),
-            );
-          } else {
-            setTabs((prev) =>
-              prev.map((t) => (t.id === tabId ? { ...t, hasLoadError: false } : t)),
-            );
-          }
+          setTabs((prev) =>
+            prev.map((t) => (t.id === tabId ? { ...t, hasLoadError: true } : t)),
+          );
         }
       }
     } finally {
@@ -312,7 +313,7 @@ export function BrowserPaneView({
             <iframe
               key={activeTab.id}
               ref={iframeRef}
-              src={activeTab.url}
+              src={resolveIframeTargetUrl(activeTab.url)}
               style={{
                 width: "100%",
                 height: "100%",

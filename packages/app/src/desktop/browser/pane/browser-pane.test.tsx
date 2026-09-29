@@ -7,6 +7,12 @@ afterEach(() => {
   cleanup();
 });
 
+
+vi.mock("expo-clipboard", () => ({
+  setStringAsync: vi.fn(),
+  getStringAsync: vi.fn(),
+}));
+
 const { theme } = vi.hoisted(() => ({
   theme: {
     colors: {
@@ -30,11 +36,15 @@ const { theme } = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("react-native-reanimated", () => ({
+  default: { View: "div" },
+}));
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) =>
-      typeof factory === "function"
-        ? (factory as (t: typeof theme) => unknown)(theme)
+      factory instanceof Function
+        ? (factory as (t: unknown) => unknown)(theme)
         : factory,
     absoluteFillObject: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   },
@@ -77,7 +87,7 @@ import {
 import { BrowserNavigationBar } from "./browser-navigation-bar";
 import { BrowserTabBar } from "./browser-tab-bar";
 import { BrowserImportDialog } from "./browser-import-dialog";
-
+import { isLocalhostUrl, resolveIframeTargetUrl } from "./url-utils";
 describe("browser URL helpers", () => {
   it("parses host from full URL", () => {
     expect(parseHostFromUrl("http://localhost:3000/medical-inquiry")).toBe("localhost:3000");
@@ -90,6 +100,22 @@ describe("browser URL helpers", () => {
       "https://localhost:3000/medical-inquiry",
     );
     expect(getHttpsRecoveryUrl("https://localhost:3000")).toBeNull();
+  });
+
+  it("identifies localhost URLs and routes external sites through reverse proxy", () => {
+    expect(isLocalhostUrl("http://localhost:3000")).toBe(true);
+    expect(isLocalhostUrl("http://127.0.0.1:5173/app")).toBe(true);
+    expect(isLocalhostUrl("https://google.com")).toBe(false);
+    expect(isLocalhostUrl("https://github.com/trending")).toBe(false);
+
+    // Localhost stays direct
+    expect(resolveIframeTargetUrl("http://localhost:3000/medical-inquiry")).toBe(
+      "http://localhost:3000/medical-inquiry",
+    );
+
+    // External sites are proxied to remove X-Frame-Options
+    const proxiedGoogle = resolveIframeTargetUrl("https://google.com");
+    expect(proxiedGoogle).toContain("/api/browser-proxy?url=https%3A%2F%2Fgoogle.com");
   });
 });
 
