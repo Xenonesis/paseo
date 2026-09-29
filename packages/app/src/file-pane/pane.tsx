@@ -443,7 +443,7 @@ function FilePanePresentation({
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
-      {preview ? (
+      {preview && (previewMode === "source" || filePreviewRenderKind(location.path) !== "html") ? (
         <FilePanelBar
           size={preview.size}
           lineCount={lineCount}
@@ -602,18 +602,20 @@ function EditableFilePane({
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
-      <FilePanelBar
-        size={
-          snapshot.observedVersion.status === "ready" ? snapshot.observedVersion.size : preview.size
-        }
-        lineCount={snapshot.content.split("\n").length}
-        editorStatus={snapshot.status}
-        cursor={showSource ? cursor : undefined}
-        vimMode={showSource ? vimMode : null}
-        conflict={conflict}
-        mode={mode}
-        onModeChange={onModeChange}
-      />
+      {showSource || filePreviewRenderKind(path) !== "html" ? (
+        <FilePanelBar
+          size={
+            snapshot.observedVersion.status === "ready" ? snapshot.observedVersion.size : preview.size
+          }
+          lineCount={snapshot.content.split("\n").length}
+          editorStatus={snapshot.status}
+          cursor={showSource ? cursor : undefined}
+          vimMode={showSource ? vimMode : null}
+          conflict={conflict}
+          mode={mode}
+          onModeChange={onModeChange}
+        />
+      ) : null}
       {showSource ? (
         <FileEditorView
           model={model}
