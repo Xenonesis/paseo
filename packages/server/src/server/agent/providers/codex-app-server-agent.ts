@@ -365,19 +365,67 @@ function isObjectSchemaNode(schema: Record<string, unknown>): boolean {
   );
 }
 
-function normalizeCodexOutputSchemaNode(schema: unknown, schemaPath: string): unknown {
+// Keywords whose value maps names to schemas.
+const SCHEMA_MAP_KEYWORDS = [
+  "properties",
+  "patternProperties",
+  "$defs",
+  "definitions",
+  "dependentSchemas",
+] as const;
+
+// Keywords whose value is a schema or an array of schemas.
+const SUBSCHEMA_KEYWORDS = [
+  "items",
+  "prefixItems",
+  "additionalItems",
+  "contains",
+  "additionalProperties",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+  "propertyNames",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "not",
+  "if",
+  "then",
+  "else",
+] as const;
+
+function normalizeCodexOutputSubschema(schema: unknown, schemaPath: string): unknown {
   if (Array.isArray(schema)) {
     return schema.map((entry, index) =>
       normalizeCodexOutputSchemaNode(entry, `${schemaPath}[${index}]`),
     );
   }
+  return normalizeCodexOutputSchemaNode(schema, schemaPath);
+}
+
+function normalizeCodexOutputSchemaNode(schema: unknown, schemaPath: string): unknown {
   if (!isSchemaRecord(schema)) {
     return schema;
   }
 
-  const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(schema)) {
-    normalized[key] = normalizeCodexOutputSchemaNode(value, `${schemaPath}.${key}`);
+  const normalized: Record<string, unknown> = { ...schema };
+  for (const keyword of SCHEMA_MAP_KEYWORDS) {
+    const schemas = schema[keyword];
+    if (isSchemaRecord(schemas)) {
+      normalized[keyword] = Object.fromEntries(
+        Object.entries(schemas).map(([name, child]) => [
+          name,
+          normalizeCodexOutputSchemaNode(child, `${schemaPath}.${keyword}.${name}`),
+        ]),
+      );
+    }
+  }
+  for (const keyword of SUBSCHEMA_KEYWORDS) {
+    if (keyword in schema) {
+      normalized[keyword] = normalizeCodexOutputSubschema(
+        schema[keyword],
+        `${schemaPath}.${keyword}`,
+      );
+    }
   }
 
   if (!isObjectSchemaNode(normalized)) {
@@ -786,25 +834,21 @@ function expandCodexCustomPrompt(template: string, args: string | undefined): st
     positional.push(token);
   }
 
-  const dollarPlaceholder = "__CODEX_DOLLAR_PLACEHOLDER__";
-  let out = template.split("$$").join(dollarPlaceholder);
+  // Match every placeholder in one pass, so inserted argument text is never expanded again.
+  const namedPlaceholders = Object.keys(named)
+    .sort((a, b) => b.length - a.length)
+    .map((key) => `${escapeRegExp(key)}\\b`);
+  const placeholder = new RegExp(
+    `\\$(${["\\$", "ARGUMENTS", "[1-9]", ...namedPlaceholders].join("|")})`,
+    "g",
+  );
 
-  out = out.split("$ARGUMENTS").join(trimmedArgs);
-
-  for (let i = 1; i <= 9; i += 1) {
-    const value = positional[i - 1] ?? "";
-    out = out.split(`$${i}`).join(value);
-  }
-
-  const namedKeys = Object.keys(named).sort((a, b) => b.length - a.length);
-  for (const key of namedKeys) {
-    const value = named[key] ?? "";
-    const re = new RegExp(`\\$${escapeRegExp(key)}\\b`, "g");
-    out = out.replace(re, value);
-  }
-
-  out = out.split(dollarPlaceholder).join("$");
-  return out;
+  return template.replace(placeholder, (match, name: string) => {
+    if (name === "$") return "$";
+    if (name === "ARGUMENTS") return trimmedArgs;
+    if (/^[1-9]$/.test(name)) return positional[Number(name) - 1] ?? "";
+    return named[name] ?? match;
+  });
 }
 
 interface CodexMcpServerConfig {
@@ -3567,6 +3611,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       if (this.currentThreadId) {
         await this.ensureThreadLoaded();
         await this.loadPersistedHistory(this.client);
+        await this.applyDefaultModelAndThinking();
       }
 
       if (this.closed) {
@@ -5164,13 +5209,20 @@ export class CodexAppServerAgentSession implements AgentSession {
     return { model, thinkingOptionId };
   }
 
+  // A session without a model or effort runs on Codex's configured defaults, whether its
+  // thread is new or resumed after a restart.
+  private async applyDefaultModelAndThinking(): Promise<string> {
+    const { model, thinkingOptionId } = await this.resolveModelAndThinking();
+    this.config.model = model;
+    this.config.thinkingOptionId = thinkingOptionId;
+    return model;
+  }
+
   private async ensureThread(): Promise<void> {
     if (!this.client) return;
     if (this.currentThreadId) return;
 
-    const { model, thinkingOptionId } = await this.resolveModelAndThinking();
-    this.config.model = model;
-    this.config.thinkingOptionId = thinkingOptionId;
+    const model = await this.applyDefaultModelAndThinking();
 
     const { params, approvalPolicy, sandbox } = this.buildThreadStartRequest(model);
     const rawResponse = await this.client.request("thread/start", params);
