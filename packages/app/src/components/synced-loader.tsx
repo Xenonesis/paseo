@@ -8,6 +8,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import { scheduleOnUI } from "react-native-worklets";
+import { isWeb } from "@/constants/platform";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import {
   SYNCED_LOADER_DOT_COUNT,
@@ -81,6 +82,13 @@ function useSyncedLoaderStep(active: boolean, reduceMotion: boolean): SharedValu
   useLayoutEffect(() => {
     if (!active || reduceMotion) {
       return;
+    }
+
+    if (isWeb) {
+      registerStepListener(step, registered, listenerId);
+      return () => {
+        unregisterStepListener(registered, listenerId);
+      };
     }
 
     scheduleOnUI(registerStepListener, step, registered, listenerId);

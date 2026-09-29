@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { WebView } from "react-native-webview";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { withPreviewCsp } from "./html-preview-csp";
 import { htmlPreviewNavigationKind } from "./html-preview-navigation";
+import { useInlinedHtmlAssets } from "./use-inlined-html-assets";
 
 // A preview is a viewer, not a browser. Only the document Paseo hands the WebView
 // loads; navigations the page attempts afterwards are refused, so a link, a
@@ -32,8 +34,21 @@ const ORIGIN_WHITELIST = ["*"];
 // would arrive with no injected policy and a clean slate to egress from.
 const BASE_URL = "about:blank";
 
-export function FileHtmlPreview({ html, testID }: { html: string; testID?: string }) {
-  const document = useMemo(() => withPreviewCsp(html), [html]);
+export function FileHtmlPreview({
+  html,
+  cwd,
+  filePath,
+  client,
+  testID,
+}: {
+  html: string;
+  cwd?: string | null;
+  filePath?: string | null;
+  client?: DaemonClient | null;
+  testID?: string;
+}) {
+  const inlinedHtml = useInlinedHtmlAssets({ html, cwd, filePath, client });
+  const document = useMemo(() => withPreviewCsp(inlinedHtml), [inlinedHtml]);
   const source = useMemo(() => ({ html: document, baseUrl: BASE_URL }), [document]);
   // Latched per document rather than once for the lifetime of the WebView: the
   // file pane re-renders with new content on every live-file refresh, and each of

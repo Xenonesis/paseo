@@ -5,8 +5,10 @@ mod daemon;
 mod editor;
 
 mod tray;
+mod notifications;
 
-use tray::setup_tray;
+use tray::{setup_tray, update_active_agents};
+use notifications::{notify_task_complete, setup_notification_listeners, show_notification};
 mod dialogs;
 
 use dialogs::{pick_file, pick_folder};
@@ -16,8 +18,22 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_updater::UpdaterExt;
 
+fn toggle_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(win) = app.get_webview_window("main") {
+        let is_visible = win.is_visible().unwrap_or(false);
+        let is_focused = win.is_focused().unwrap_or(false);
+        if is_visible && is_focused {
+            let _ = win.hide();
+        } else {
+            let _ = win.show();
+            let _ = win.unminimize();
+            let _ = win.set_focus();
+        }
+    }
+}
 fn get_daemon_status_json() -> String {
     let mut home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.push(".paseo");
@@ -115,6 +131,15 @@ try {{
       if (command === 'open_file_dialog' || command === 'pick_file') {{
         return await window.__TAURI_INTERNALS__.invoke('pick_file');
       }}
+      if (command === 'show_notification') {{
+        return await window.__TAURI_INTERNALS__.invoke('show_notification', args || {{}});
+      }}
+      if (command === 'notify_task_complete') {{
+        return await window.__TAURI_INTERNALS__.invoke('notify_task_complete', args || {{}});
+      }}
+      if (command === 'update_active_agents') {{
+        return await window.__TAURI_INTERNALS__.invoke('update_active_agents', args || {{}});
+      }}
       return null;
     }}
   }};
@@ -181,18 +206,54 @@ try {{
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state)
-        .invoke_handler(tauri::generate_handler![open_in_editor, pick_folder, pick_file])
+        .invoke_handler(tauri::generate_handler![
+            open_in_editor,
+            pick_folder,
+            pick_file,
+            update_active_agents,
+            show_notification,
+            notify_task_complete
+        ])
         .setup(move |app| {
             let _ = setup_tray(app.handle());
+            setup_notification_listeners(app.handle());
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("Paseo")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(800.0, 600.0)
                 .initialization_script(&bridge_script);
 
-            let _ = win_builder.build();
+            #[cfg(target_os = "windows")]
+            let win_builder = {
+                let effects = tauri::window::EffectsBuilder::new()
+                    .effect(tauri::window::Effect::Mica)
+                    .build();
+                win_builder.effects(effects).transparent(true).shadow(true)
+            };
 
+            let win = win_builder.build();
+            if win.is_err() {
+                eprintln!("[window] Failed to build window with effects, falling back to standard window");
+                let fallback_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                    .title("Paseo")
+                    .inner_size(1280.0, 800.0)
+                    .min_inner_size(800.0, 600.0)
+                    .initialization_script(&bridge_script);
+                let _ = fallback_builder.build();
+            }
+
+            // Register global shortcut to toggle main window visibility
+            for shortcut in ["CommandOrControl+Shift+P", "Alt+Space"] {
+                if let Err(err) = app.global_shortcut().on_shortcut(shortcut, |app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        toggle_main_window(app);
+                    }
+                }) {
+                    eprintln!("[shortcut] Failed to register global shortcut '{shortcut}': {err}");
+                }
+            }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match handle.updater() {

@@ -54,6 +54,8 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
+  cwd?: string | null;
+  client?: DaemonClient | null;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
@@ -135,6 +137,8 @@ function FilePreviewBody({
   location,
   navigationRevision,
   imagePreviewUri,
+  cwd,
+  client,
 }: FilePreviewBodyProps) {
   const { t } = useTranslation();
   const filePath = location.path;
@@ -169,7 +173,13 @@ function FilePreviewBody({
       // The HTML document owns its own scrolling, so no ScrollView wrapper here.
       return (
         <View style={styles.previewScrollContainer}>
-          <FileHtmlPreview html={preview.content ?? ""} testID="file-html-preview" />
+          <FileHtmlPreview
+            html={preview.content ?? ""}
+            cwd={cwd}
+            filePath={filePath}
+            client={client}
+            testID="file-html-preview"
+          />
         </View>
       );
     }
@@ -449,6 +459,8 @@ function FilePanePresentation({
         location={location}
         navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
+        cwd={readTarget?.cwd ?? null}
+        client={client}
       />
     </View>
   );
@@ -622,6 +634,8 @@ function EditableFilePane({
           location={location}
           navigationRevision={navigationRevision}
           imagePreviewUri={null}
+          cwd={cwd}
+          client={client}
         />
       )}
     </View>

@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { withPreviewCsp } from "./html-preview-csp";
+import { useInlinedHtmlAssets } from "./use-inlined-html-assets";
 
 // `allow-scripts` alone: the file gets an opaque origin, so a plan page can run
 // its own scripts (Excalidraw, charts) but cannot reach the Paseo app's DOM,
@@ -23,9 +25,22 @@ const iframeStyle = {
   backgroundColor: "white",
 } as const;
 
-export function FileHtmlPreview({ html, testID }: { html: string; testID?: string }) {
+export function FileHtmlPreview({
+  html,
+  cwd,
+  filePath,
+  client,
+  testID,
+}: {
+  html: string;
+  cwd?: string | null;
+  filePath?: string | null;
+  client?: DaemonClient | null;
+  testID?: string;
+}) {
   const { t } = useTranslation();
-  const document = useMemo(() => withPreviewCsp(html), [html]);
+  const inlinedHtml = useInlinedHtmlAssets({ html, cwd, filePath, client });
+  const document = useMemo(() => withPreviewCsp(inlinedHtml), [inlinedHtml]);
   return (
     <iframe
       data-testid={testID}

@@ -117,3 +117,15 @@ pub fn stop_daemon(state: &DaemonState) {
         }
     }
 }
+
+pub fn restart_daemon(state: &DaemonState) -> bool {
+    stop_daemon(state);
+    let new_child = start_daemon();
+    if let Ok(mut lock) = state.process.lock() {
+        let success = new_child.is_some();
+        *lock = new_child;
+        success
+    } else {
+        false
+    }
+}
