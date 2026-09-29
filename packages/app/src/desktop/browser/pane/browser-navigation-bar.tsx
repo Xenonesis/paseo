@@ -24,7 +24,7 @@ import {
   Tablet,
 } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
-
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 export interface BrowserNavigationBarProps {
   url: string;
   canGoBack?: boolean;
@@ -140,66 +140,90 @@ export function BrowserNavigationBar({
       {/* Action Tools */}
       <View style={styles.tools}>
         {onOpenImport ? (
-          <Button
-            size="xs"
-            variant="outline"
-            style={styles.importBtn}
-            onPress={onOpenImport}
-            testID="browser-import-btn"
-          >
-            <Download size={12} color={theme.colors.foreground} />
-            <Text style={styles.importBtnText}>Import</Text>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="xs"
+                variant="outline"
+                style={styles.importBtn}
+                onPress={onOpenImport}
+                testID="browser-import-btn"
+              >
+                <Download size={12} color={theme.colors.foreground} />
+                <Text style={styles.importBtnText}>Import</Text>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Import browser cookies & sessions (Chrome/Edge)</TooltipContent>
+          </Tooltip>
         ) : null}
 
         {onToggleInspect ? (
-          <Button
-            size="xs"
-            variant={isInspectActive ? "default" : "ghost"}
-            style={styles.iconBtn}
-            onPress={onToggleInspect}
-            testID="browser-inspect-btn"
-          >
-            <MousePointer2 size={14} color={isInspectActive ? "#fff" : theme.colors.foreground} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="xs"
+                variant={isInspectActive ? "default" : "ghost"}
+                style={styles.iconBtn}
+                onPress={onToggleInspect}
+                testID="browser-inspect-btn"
+              >
+                <MousePointer2 size={14} color={isInspectActive ? "#fff" : theme.colors.foreground} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Inspect & select element on webpage</TooltipContent>
+          </Tooltip>
         ) : null}
 
         {onSendToAgent ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            style={styles.iconBtn}
-            onPress={onSendToAgent}
-            testID="browser-send-agent-btn"
-          >
-            <Bot size={15} color={theme.colors.foreground} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="xs"
+                variant="ghost"
+                style={styles.iconBtn}
+                onPress={onSendToAgent}
+                testID="browser-send-agent-btn"
+              >
+                <Bot size={15} color={theme.colors.foreground} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Send current URL to AI Agent</TooltipContent>
+          </Tooltip>
         ) : null}
 
         {onCopyAddress ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            style={styles.iconBtn}
-            onPress={() => onCopyAddress(url)}
-            testID="browser-nav-copy-btn"
-          >
-            <Copy size={14} color={theme.colors.foreground} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="xs"
+                variant="ghost"
+                style={styles.iconBtn}
+                onPress={() => onCopyAddress(url)}
+                testID="browser-nav-copy-btn"
+              >
+                <Copy size={14} color={theme.colors.foreground} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Copy URL to clipboard</TooltipContent>
+          </Tooltip>
         ) : null}
 
         {onOpenExternally ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            style={styles.iconBtn}
-            onPress={() => onOpenExternally(url)}
-            testID="browser-nav-external-btn"
-          >
-            <ExternalLink size={14} color={theme.colors.foreground} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="xs"
+                variant="ghost"
+                style={styles.iconBtn}
+                onPress={() => onOpenExternally(url)}
+                testID="browser-nav-external-btn"
+              >
+                <ExternalLink size={14} color={theme.colors.foreground} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Open in default browser (Chrome/Edge)</TooltipContent>
+          </Tooltip>
         ) : null}
-
         {onSelectViewportPreset ? (
           <View style={styles.viewportControls}>
             <Pressable

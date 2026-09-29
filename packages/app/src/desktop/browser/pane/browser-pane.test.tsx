@@ -48,8 +48,17 @@ vi.mock("react-native-unistyles", () => ({
         : factory,
     absoluteFillObject: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   },
-  useUnistyles: () => ({ theme }),
+  useUnistyles: () => ({
+    theme,
+    rt: { breakpoint: "lg", isCompact: false },
+  }),
   withUnistyles: (c: unknown) => c,
+}));
+
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 vi.mock("lucide-react-native", () => {
