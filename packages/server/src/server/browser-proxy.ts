@@ -7,6 +7,17 @@ import type { Logger } from "pino";
 const DESKTOP_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
+// Host-keyed session cookie jar for imported or remembered cookies
+const sessionCookieJar = new Map<string, string>();
+
+export function setDomainCookies(host: string, cookies: string): void {
+  sessionCookieJar.set(host.toLowerCase(), cookies);
+}
+
+export function getDomainCookies(host: string): string | undefined {
+  return sessionCookieJar.get(host.toLowerCase());
+}
+
 export function sanitizeProxyHeaders(
   rawHeaders: http.IncomingHttpHeaders,
 ): Record<string, string | string[] | undefined> {
@@ -33,7 +44,6 @@ export function sanitizeProxyHeaders(
 }
 
 export function injectBaseTagIntoHtml(html: string, targetUrl: string): string {
-  // Normalize base URL to have trailing slash if path is empty
   const urlObj = new URL(targetUrl);
   const baseHref = urlObj.toString();
 
@@ -51,6 +61,18 @@ export function injectBaseTagIntoHtml(html: string, targetUrl: string): string {
 
 export function createBrowserProxyHandler(logger?: Logger): RequestHandler {
   return (req: Request, res: Response): void => {
+    // Cookie management endpoint
+    if (req.method === "POST" && req.path.endsWith("/cookies")) {
+      const { host, cookies } = (req.body as { host?: string; cookies?: string }) || {};
+      if (host && typeof cookies === "string") {
+        setDomainCookies(host, cookies);
+        res.json({ ok: true, host, count: cookies.split(";").length });
+        return;
+      }
+      res.status(400).json({ error: "Missing host or cookies in body" });
+      return;
+    }
+
     const rawTarget = req.query.url;
     if (!rawTarget || typeof rawTarget !== "string") {
       res.status(400).json({ error: "Missing required 'url' query parameter" });
@@ -70,6 +92,12 @@ export function createBrowserProxyHandler(logger?: Logger): RequestHandler {
 
     const client = parsedUrl.protocol === "https:" ? https : http;
 
+    // Attach custom imported cookies for this domain if present
+    const customCookies = getDomainCookies(parsedUrl.host) || getDomainCookies(parsedUrl.hostname);
+    const outboundCookie = customCookies
+      ? `${req.headers.cookie ? `${req.headers.cookie}; ` : ""}${customCookies}`
+      : req.headers.cookie;
+
     const proxyRequest = client.request(
       parsedUrl,
       {
@@ -81,6 +109,7 @@ export function createBrowserProxyHandler(logger?: Logger): RequestHandler {
           accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
           "accept-encoding": "identity", // Disable gzip/br to allow easy <base> injection
           referer: parsedUrl.origin,
+          ...(outboundCookie ? { cookie: outboundCookie } : {}),
         },
       },
       (upstreamRes) => {

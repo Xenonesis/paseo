@@ -62,6 +62,7 @@ import { SessionProvider } from "@/contexts/session-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
+import { useDesktopNativeBridgeCoordinator } from "@/desktop/use-desktop-native-bridge-coordinator";
 import {
   resolveStartupBlocker,
   resolveStartupNavigationReady,
@@ -513,6 +514,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
+  useDesktopNativeBridgeCoordinator();
 
   const appContentMinimumWidth = resolveDesktopAppContentMinimum({
     isSettingsRoute: pathname.includes("/settings"),

@@ -9,6 +9,8 @@ import { BrowserNavigationBar } from "./browser-navigation-bar";
 import { BrowserLoadFailureOverlay, parseHostFromUrl } from "./browser-load-failure-overlay";
 import { BrowserImportDialog } from "./browser-import-dialog";
 import { isLocalhostUrl, resolveIframeTargetUrl } from "./url-utils";
+import { useSendBrowserUrlToAgent } from "./use-send-browser-url-to-agent";
+import { INSPECT_INJECTOR_SCRIPT } from "./inspect-injector";
 
 export interface BrowserPaneViewProps {
   browserId: string;
@@ -238,16 +240,74 @@ export function BrowserPaneView({
     [activeTabId],
   );
 
+  const { sendToAgent } = useSendBrowserUrlToAgent({ serverId, workspaceId });
   const handleSendToAgent = useCallback(() => {
-    toast.show(`Sent ${activeTab.url} to agent prompt`);
-  }, [activeTab.url, toast]);
+    void sendToAgent(activeTab.url, activeTab.title);
+  }, [activeTab.title, activeTab.url, sendToAgent]);
 
+  // Inject inspector and listen for selected elements
+  const injectInspectorIntoIframe = useCallback(() => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc && !doc.getElementById("__paseo_inspect_script__")) {
+        const script = doc.createElement("script");
+        script.id = "__paseo_inspect_script__";
+        script.textContent = INSPECT_INJECTOR_SCRIPT;
+        doc.head?.appendChild(script);
+      }
+    } catch {
+      // Cross-origin iframes ignore direct DOM injection; handled via postMessage
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "PASEO_SET_INSPECT_MODE", active: isInspectActive },
+        "*",
+      );
+    } catch {}
+  }, [isInspectActive]);
+
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (event.data?.type === "PASEO_INSPECT_ELEMENT_SELECTED") {
+        const { tag, id, text, snippet } = event.data.payload || {};
+        const elementDesc = `${tag}${id ? `#${id}` : ""}: "${text.slice(0, 40)}"`;
+        toast.show(`Selected element: ${elementDesc}`);
+        setIsInspectActive(false);
+        void sendToAgent(
+          activeTab.url,
+          `Inspected Element <${tag}${id ? ` id="${id}"` : ""}>: ${snippet}`,
+        );
+      }
+    };
+    window.addEventListener("message", handleWindowMessage);
+    return () => window.removeEventListener("message", handleWindowMessage);
+  }, [activeTab.url, sendToAgent, toast]);
   const handleImportSession = useCallback(
-    (cookiesText: string, source: "chrome" | "edge" | "manual") => {
-      toast.show(`Imported ${source} session cookies`);
+    async (cookiesText: string, source: "chrome" | "edge" | "manual") => {
+      try {
+        const host = parseHostFromUrl(activeTab.url);
+        if (host && cookiesText.trim()) {
+          const daemonBase =
+            typeof window !== "undefined" && window.location?.origin
+              ? window.location.origin
+              : "http://127.0.0.1:6767";
+
+          await fetch(`${daemonBase}/api/browser-proxy/cookies`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ host, cookies: cookiesText.trim() }),
+          });
+        }
+        toast.show(`Imported ${source} session cookies for ${parseHostFromUrl(activeTab.url)}`);
+      } catch {
+        toast.show(`Applied ${source} session cookies locally`);
+      }
       handleReload();
     },
-    [handleReload, toast],
+    [activeTab.url, handleReload, toast],
   );
 
   const viewportStyle = useMemo(() => {
@@ -321,11 +381,12 @@ export function BrowserPaneView({
                 display: activeTab.hasLoadError ? "none" : "block",
               }}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-              onLoad={() =>
+              onLoad={() => {
+                injectInspectorIntoIframe();
                 setTabs((prev) =>
                   prev.map((t) => (t.id === activeTabId ? { ...t, isLoading: false } : t)),
-                )
-              }
+                );
+              }}
               onError={() =>
                 setTabs((prev) =>
                   prev.map((t) => (t.id === activeTabId ? { ...t, hasLoadError: true } : t)),

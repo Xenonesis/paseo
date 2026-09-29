@@ -10,6 +10,7 @@ import { BrowserNavigationBar } from "@/desktop/browser/pane/browser-navigation-
 import { BrowserLoadFailureOverlay, parseHostFromUrl } from "@/desktop/browser/pane/browser-load-failure-overlay";
 import { BrowserImportDialog } from "@/desktop/browser/pane/browser-import-dialog";
 import { isLocalhostUrl, resolveIframeTargetUrl } from "@/desktop/browser/pane/url-utils";
+import { useSendBrowserUrlToAgent } from "@/desktop/browser/pane/use-send-browser-url-to-agent";
 import { withPreviewCsp } from "./html-preview-csp";
 import { useInlinedHtmlAssets } from "./use-inlined-html-assets";
 
@@ -201,10 +202,10 @@ export function FileHtmlPreview({
     [activeTabId],
   );
 
+  const { sendToAgent } = useSendBrowserUrlToAgent();
   const handleSendToAgent = useCallback(() => {
-    toast.show(`Sent ${activeTab.url} to agent prompt`);
-  }, [activeTab.url, toast]);
-
+    void sendToAgent(activeTab.url, activeTab.title);
+  }, [activeTab.title, activeTab.url, sendToAgent]);
   const handleImportSession = useCallback(
     (_cookiesText: string, source: "chrome" | "edge" | "manual") => {
       toast.show(`Imported ${source} session cookies`);
