@@ -1,0 +1,277 @@
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  type NativeSyntheticEvent,
+  Pressable,
+  Text,
+  TextInput,
+  type TextInputSubmitEditingEventData,
+  View,
+} from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Copy,
+  ExternalLink,
+  Globe,
+  Maximize,
+  Monitor,
+  MousePointer2,
+  RotateCw,
+  Smartphone,
+  Tablet,
+} from "lucide-react-native";
+import { Button } from "@/components/ui/button";
+
+export interface BrowserNavigationBarProps {
+  url: string;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  isLoading?: boolean;
+  viewportPreset?: "responsive" | "desktop" | "tablet" | "mobile";
+  onNavigate: (newUrl: string) => void;
+  onGoBack?: () => void;
+  onGoForward?: () => void;
+  onReload?: () => void;
+  onCopyAddress?: (url: string) => void;
+  onOpenExternally?: (url: string) => void;
+  onToggleInspect?: () => void;
+  isInspectActive?: boolean;
+  onSelectViewportPreset?: (preset: "responsive" | "desktop" | "tablet" | "mobile") => void;
+  testID?: string;
+}
+
+export function BrowserNavigationBar({
+  url,
+  canGoBack = false,
+  canGoForward = false,
+  isLoading = false,
+  viewportPreset = "responsive",
+  onNavigate,
+  onGoBack,
+  onGoForward,
+  onReload,
+  onCopyAddress,
+  onOpenExternally,
+  onToggleInspect,
+  isInspectActive = false,
+  onSelectViewportPreset,
+  testID = "browser-navigation-bar",
+}: BrowserNavigationBarProps) {
+  const { theme } = useUnistyles();
+  const [addressInput, setAddressInput] = useState(url);
+
+  useEffect(() => {
+    setAddressInput(url);
+  }, [url]);
+
+  const handleSubmit = useCallback(() => {
+    let clean = addressInput.trim();
+    if (!clean) return;
+    if (!clean.startsWith("http://") && !clean.startsWith("https://") && !clean.startsWith("about:")) {
+      clean = `http://${clean}`;
+    }
+    onNavigate(clean);
+  }, [addressInput, onNavigate]);
+
+  return (
+    <View style={styles.container} testID={testID}>
+      {/* Navigation Controls */}
+      <View style={styles.navControls}>
+        <Button
+          size="xs"
+          variant="ghost"
+          style={styles.iconBtn}
+          disabled={!canGoBack || !onGoBack}
+          onPress={onGoBack}
+          testID="browser-back-btn"
+        >
+          <ArrowLeft size={16} color={canGoBack ? theme.colors.foreground : theme.colors.foregroundMuted} />
+        </Button>
+
+        <Button
+          size="xs"
+          variant="ghost"
+          style={styles.iconBtn}
+          disabled={!canGoForward || !onGoForward}
+          onPress={onGoForward}
+          testID="browser-forward-btn"
+        >
+          <ArrowRight size={16} color={canGoForward ? theme.colors.foreground : theme.colors.foregroundMuted} />
+        </Button>
+
+        <Button
+          size="xs"
+          variant="ghost"
+          style={styles.iconBtn}
+          disabled={!onReload}
+          onPress={onReload}
+          testID="browser-reload-btn"
+        >
+          <RotateCw size={14} color={theme.colors.foreground} />
+        </Button>
+      </View>
+
+      {/* Address Bar */}
+      <View style={styles.addressBar}>
+        <Globe size={14} color={theme.colors.foregroundMuted} style={styles.globeIcon} />
+        <TextInput
+          value={addressInput}
+          onChangeText={setAddressInput}
+          onSubmitEditing={handleSubmit}
+          returnKeyType="go"
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="Enter address or localhost URL..."
+          placeholderTextColor={theme.colors.foregroundMuted}
+          style={styles.addressInput}
+          testID="browser-address-input"
+        />
+      </View>
+
+      {/* Action Tools */}
+      <View style={styles.tools}>
+        {onToggleInspect ? (
+          <Button
+            size="xs"
+            variant={isInspectActive ? "default" : "ghost"}
+            style={styles.iconBtn}
+            onPress={onToggleInspect}
+            testID="browser-inspect-btn"
+          >
+            <MousePointer2 size={14} color={isInspectActive ? "#fff" : theme.colors.foreground} />
+          </Button>
+        ) : null}
+
+        {onCopyAddress ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            style={styles.iconBtn}
+            onPress={() => onCopyAddress(url)}
+            testID="browser-nav-copy-btn"
+          >
+            <Copy size={14} color={theme.colors.foreground} />
+          </Button>
+        ) : null}
+
+        {onOpenExternally ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            style={styles.iconBtn}
+            onPress={() => onOpenExternally(url)}
+            testID="browser-nav-external-btn"
+          >
+            <ExternalLink size={14} color={theme.colors.foreground} />
+          </Button>
+        ) : null}
+
+        {onSelectViewportPreset ? (
+          <View style={styles.viewportControls}>
+            <Pressable
+              style={[styles.viewportBtn, viewportPreset === "responsive" && styles.viewportBtnActive]}
+              onPress={() => onSelectViewportPreset("responsive")}
+              testID="viewport-responsive"
+            >
+              <Maximize size={12} color={viewportPreset === "responsive" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+            </Pressable>
+            <Pressable
+              style={[styles.viewportBtn, viewportPreset === "desktop" && styles.viewportBtnActive]}
+              onPress={() => onSelectViewportPreset("desktop")}
+              testID="viewport-desktop"
+            >
+              <Monitor size={12} color={viewportPreset === "desktop" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+            </Pressable>
+            <Pressable
+              style={[styles.viewportBtn, viewportPreset === "tablet" && styles.viewportBtnActive]}
+              onPress={() => onSelectViewportPreset("tablet")}
+              testID="viewport-tablet"
+            >
+              <Tablet size={12} color={viewportPreset === "tablet" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+            </Pressable>
+            <Pressable
+              style={[styles.viewportBtn, viewportPreset === "mobile" && styles.viewportBtnActive]}
+              onPress={() => onSelectViewportPreset("mobile")}
+              testID="viewport-mobile"
+            >
+              <Smartphone size={12} color={viewportPreset === "mobile" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create((theme) => ({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1.5],
+    backgroundColor: theme.colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    minHeight: 42,
+  },
+  navControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  iconBtn: {
+    width: 28,
+    height: 28,
+    padding: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addressBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.surface0,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[2],
+    height: 30,
+  },
+  globeIcon: {
+    marginRight: theme.spacing[1.5],
+  },
+  addressInput: {
+    flex: 1,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+    paddingVertical: 0,
+    height: "100%",
+  },
+  tools: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  viewportControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.sm,
+    padding: 2,
+    gap: 2,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  viewportBtn: {
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 2,
+  },
+  viewportBtnActive: {
+    backgroundColor: theme.colors.surface3,
+  },
+}));
