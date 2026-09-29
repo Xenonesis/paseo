@@ -61,6 +61,11 @@ export interface PlaywrightBrowserHostOptions {
    * Additional command-line flags passed to the Chromium process.
    */
   args?: string[];
+
+  /**
+   * Callback function called whenever a live screencast frame is emitted.
+   */
+  onScreencastFrame?: (frame: ScreencastFrame) => void;
 }
 
 /**
@@ -69,6 +74,65 @@ export interface PlaywrightBrowserHostOptions {
  */
 export interface PlaywrightBrowserHostClientOptions extends PlaywrightBrowserHostOptions {
   onResponse?: PlaywrightBrowserHostOnResponse;
+  onScreencastFrame?: (frame: ScreencastFrame) => void;
+}
+
+/**
+ * Frame data delivered by the live screencast stream.
+ */
+export interface ScreencastFrame {
+  /**
+   * Base64-encoded image data.
+   */
+  data: string;
+
+  /**
+   * Screencast frame metadata including timestamp and active page URL.
+   */
+  metadata: {
+    timestamp: number;
+    url: string;
+  };
+}
+
+/**
+ * Listener function called whenever a screencast frame arrives.
+ */
+export type ScreencastFrameListener = (frame: ScreencastFrame) => void;
+
+/**
+ * Options for configuring live screencast streaming.
+ */
+export interface StartScreencastOptions {
+  /**
+   * Compression format for screencast frames (`jpeg` or `png`). Defaults to `jpeg`.
+   */
+  format?: "jpeg" | "png";
+
+  /**
+   * Compression quality between 0 and 100. Defaults to 60.
+   */
+  quality?: number;
+
+  /**
+   * Target browser tab ID to screencast. If omitted, uses active tab.
+   */
+  browserId?: string;
+
+  /**
+   * Maximum frame width in pixels.
+   */
+  maxWidth?: number;
+
+  /**
+   * Maximum frame height in pixels.
+   */
+  maxHeight?: number;
+
+  /**
+   * Optional listener to receive screencast frames.
+   */
+  onFrame?: ScreencastFrameListener;
 }
 
 /**

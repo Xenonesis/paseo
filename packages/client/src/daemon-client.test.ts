@@ -3794,6 +3794,67 @@ test("omitting create_paseo_worktree_request worktree base-ref fields preserves 
   });
 });
 
+test("listPaseoWorktrees sends paseo_worktree_list_request and returns worktree payload", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const listPromise = client.listPaseoWorktrees(
+    { cwd: "/tmp/project" },
+    "req-worktree-list-1",
+  );
+
+  expect(assertStr(mock.sent[0])).toBe(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "paseo_worktree_list_request",
+        cwd: "/tmp/project",
+        requestId: "req-worktree-list-1",
+      },
+    }),
+  );
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "paseo_worktree_list_response",
+      payload: {
+        requestId: "req-worktree-list-1",
+        worktrees: [
+          {
+            worktreePath: "/tmp/project-wt",
+            createdAt: "2026-09-01T00:00:00Z",
+            branchName: "feature-fleet",
+            head: "abc1234",
+          },
+        ],
+        error: null,
+      },
+    }),
+  );
+
+  await expect(listPromise).resolves.toEqual({
+    requestId: "req-worktree-list-1",
+    worktrees: [
+      {
+        worktreePath: "/tmp/project-wt",
+        createdAt: "2026-09-01T00:00:00Z",
+        branchName: "feature-fleet",
+        head: "abc1234",
+      },
+    ],
+    error: null,
+  });
+});
+
 test("sends explicit shutdown_server_request via shutdownServer", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

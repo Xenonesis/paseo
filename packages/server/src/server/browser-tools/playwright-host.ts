@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
 import {
   type BrowserAutomationCommand,
   type BrowserAutomationCommandName,
@@ -14,6 +14,9 @@ import {
   type PlaywrightBrowserHostClientOptions,
   type PlaywrightBrowserHostOnResponse,
   type PlaywrightBrowserHostOptions,
+  type ScreencastFrame,
+  type ScreencastFrameListener,
+  type StartScreencastOptions,
   resolveDefaultBrowserUserDataDir,
 } from "./types.js";
 
@@ -36,6 +39,17 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
     context: BrowserContext;
   }> | null = null;
 
+  public onScreencastFrame?: (frame: {
+    data: string;
+    metadata: { timestamp: number; url: string };
+  }) => void;
+
+  private readonly screencastListeners = new Set<ScreencastFrameListener>();
+  private screencastSession: CDPSession | null = null;
+  private screencastPage: Page | null = null;
+  private isScreencastingActive = false;
+  private screencastOptions: StartScreencastOptions = { format: "jpeg", quality: 60 };
+
   public constructor(
     onResponse: PlaywrightBrowserHostOnResponse,
     options?: PlaywrightBrowserHostOptions,
@@ -48,9 +62,15 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
     if (typeof onResponseOrOptions === "function") {
       this.onResponse = onResponseOrOptions;
       this.options = options ?? {};
+      if (options?.onScreencastFrame) {
+        this.onScreencastFrame = options.onScreencastFrame;
+      }
     } else {
       this.onResponse = onResponseOrOptions?.onResponse ?? (() => {});
       this.options = onResponseOrOptions ?? {};
+      if (onResponseOrOptions?.onScreencastFrame) {
+        this.onScreencastFrame = onResponseOrOptions.onScreencastFrame;
+      }
     }
   }
 
@@ -66,6 +86,181 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
 
   public get activeBrowserId(): string | null {
     return this.activeTabId;
+  }
+
+  public get isScreencastActive(): boolean {
+    return this.isScreencastingActive;
+  }
+
+  /**
+   * Subscribes a listener to receive live screencast frames.
+   * Returns an unsubscribe callback.
+   */
+  public subscribeScreencast(
+    listener: (frame: { data: string; metadata: { timestamp: number; url: string } }) => void,
+  ): () => void {
+    this.screencastListeners.add(listener);
+    return () => {
+      this.screencastListeners.delete(listener);
+    };
+  }
+
+  private emitScreencastFrame(frame: {
+    data: string;
+    metadata: { timestamp: number; url: string };
+  }): void {
+    try {
+      this.onScreencastFrame?.(frame);
+    } catch {
+      // Prevent listener errors from interrupting host
+    }
+    for (const listener of this.screencastListeners) {
+      try {
+        listener(frame);
+      } catch {
+        // Prevent subscriber errors from interrupting host
+      }
+    }
+  }
+
+  /**
+   * Starts live screencast streaming on the active browser page via Chrome DevTools Protocol (CDP).
+   */
+  public async startScreencast(options?: StartScreencastOptions): Promise<void> {
+    this.isScreencastingActive = true;
+    this.screencastOptions = {
+      format: options?.format ?? "jpeg",
+      quality: options?.quality ?? 60,
+      maxWidth: options?.maxWidth,
+      maxHeight: options?.maxHeight,
+    };
+    if (options?.onFrame) {
+      this.subscribeScreencast(options.onFrame);
+    }
+
+    const { context } = await this.ensureBrowser();
+    if (this.tabs.size === 0) {
+      const page = await context.newPage();
+      this.registerPage(page);
+    }
+
+    const page = this.getActivePage(options?.browserId);
+    await this.enableScreencastForPage(page);
+  }
+
+  /**
+   * Stops live screencast streaming and cleans up the active CDP session.
+   */
+  public async stopScreencast(): Promise<void> {
+    this.isScreencastingActive = false;
+    await this.cleanupScreencastSession();
+  }
+
+  private async cleanupScreencastSession(): Promise<void> {
+    const session = this.screencastSession;
+    this.screencastSession = null;
+    this.screencastPage = null;
+
+    if (session) {
+      try {
+        await session.send("Page.stopScreencast");
+      } catch {
+        // Session or target may already be dead
+      }
+      try {
+        await session.detach();
+      } catch {
+        // Session may already be detached
+      }
+    }
+  }
+
+  private async enableScreencastForPage(page: Page): Promise<void> {
+    if (this.screencastPage === page && this.screencastSession) {
+      return;
+    }
+
+    await this.cleanupScreencastSession();
+
+    try {
+      type PageWithContext = Page & { context?: () => BrowserContext };
+      const pageWithContext = page as PageWithContext;
+      const context =
+        typeof pageWithContext.context === "function"
+          ? pageWithContext.context()
+          : this.context;
+
+      type ContextWithCDP = BrowserContext & {
+        newCDPSession?: (page: Page) => Promise<CDPSession>;
+      };
+      const contextWithCDP = context as ContextWithCDP | null;
+
+      let session: CDPSession | null = null;
+      if (contextWithCDP && typeof contextWithCDP.newCDPSession === "function") {
+        session = await contextWithCDP.newCDPSession(page);
+      }
+
+      if (!session) {
+        return;
+      }
+
+      this.screencastSession = session;
+      this.screencastPage = page;
+
+      session.on("Page.screencastFrame", async (payload: {
+        data: string;
+        metadata?: { timestamp?: number; [key: string]: unknown };
+        sessionId: number;
+      }) => {
+        try {
+          const rawTs = payload.metadata?.timestamp;
+          const timestamp =
+            typeof rawTs === "number" && rawTs > 0
+              ? rawTs < 1e11
+                ? Math.round(rawTs * 1000)
+                : Math.round(rawTs)
+              : Date.now();
+
+          let url = "";
+          try {
+            url = page.url();
+          } catch {
+            // Page may be closed/closing
+          }
+
+          const frame: ScreencastFrame = {
+            data: payload.data,
+            metadata: {
+              timestamp,
+              url,
+            },
+          };
+
+          this.emitScreencastFrame(frame);
+        } finally {
+          try {
+            await session.send("Page.screencastFrameAck", { sessionId: payload.sessionId });
+          } catch {
+            // Session may be closed
+          }
+        }
+      });
+
+      const params: Record<string, unknown> = {
+        format: this.screencastOptions.format ?? "jpeg",
+        quality: this.screencastOptions.quality ?? 60,
+      };
+      if (this.screencastOptions.maxWidth !== undefined) {
+        params.maxWidth = this.screencastOptions.maxWidth;
+      }
+      if (this.screencastOptions.maxHeight !== undefined) {
+        params.maxHeight = this.screencastOptions.maxHeight;
+      }
+
+      await session.send("Page.startScreencast", params);
+    } catch {
+      // CDP session creation or screencast command failed gracefully
+    }
   }
 
   private async ensureBrowser(): Promise<{ browser: Browser | null; context: BrowserContext }> {
@@ -104,6 +299,7 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
         }
 
         this.context.on("close", () => {
+          void this.cleanupScreencastSession();
           this.context = null;
           this.browser = null;
           this.tabs.clear();
@@ -139,11 +335,23 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
     if (!this.activeTabId) {
       this.activeTabId = tabId;
     }
+    if (this.isScreencastingActive && !this.screencastSession) {
+      void this.enableScreencastForPage(page);
+    }
 
     page.once("close", () => {
+      if (this.screencastPage === page) {
+        void this.cleanupScreencastSession();
+      }
       this.tabs.delete(tabId);
       if (this.activeTabId === tabId) {
         this.activeTabId = this.tabs.keys().next().value ?? null;
+      }
+      if (this.isScreencastingActive && this.activeTabId) {
+        const nextTab = this.tabs.get(this.activeTabId);
+        if (nextTab && nextTab !== page) {
+          void this.enableScreencastForPage(nextTab);
+        }
       }
     });
 
@@ -158,6 +366,9 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
     }
     if (!this.activeTabId && id) {
       this.activeTabId = id;
+    }
+    if (this.isScreencastingActive && this.screencastPage && this.screencastPage !== page) {
+      void this.enableScreencastForPage(page);
     }
     return page;
   }
@@ -395,6 +606,7 @@ export class PlaywrightBrowserHostClient implements BrowserHostClient {
     }
   }
   public async close(): Promise<void> {
+    await this.stopScreencast();
     const context = this.context;
     const browser = this.browser;
     this.context = null;

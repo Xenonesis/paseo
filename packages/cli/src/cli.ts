@@ -15,6 +15,7 @@ import { createWorkspaceCommand } from "./commands/workspace/index.js";
 import { createHeartbeatCommand } from "./commands/heartbeat/index.js";
 import { createHubCommand } from "./commands/hub/index.js";
 import { createHooksCommand } from "./commands/hooks.js";
+import { createSkillsCommand } from "./commands/skills/index.js";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
 import { daemonStatusCommand } from "./commands/daemon/status.js";
 import { daemonRestartCommand } from "./commands/daemon/restart.js";
@@ -152,6 +153,9 @@ export function createCli(): Command {
 
   // Speech model commands
   program.addCommand(createSpeechCommand());
+
+  // Skills commands
+  program.addCommand(createSkillsCommand());
 
   // Workspace commands
   program.addCommand(createProjectCommand());

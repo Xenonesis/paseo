@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef } from "react";
-import { Text, View } from "react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { GitBranch } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -11,6 +11,7 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { useToast } from "@/contexts/toast-context";
 import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
 import { ToolbarLabelSelectTrigger } from "@/components/ui/toolbar-label-trigger";
+import { WorktreeFleetDrawer } from "@/worktrees/worktree-fleet-drawer";
 
 interface BranchSwitcherProps {
   currentBranchName: string | null;
@@ -40,6 +41,8 @@ export function BranchSwitcher({
   const isConnected = useHostRuntimeIsConnected(serverId);
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  const [isWorktreesOpen, setIsWorktreesOpen] = useState(false);
 
   const { branchOptions, isOpen, setIsOpen, handleBranchSelect } = useBranchSwitcher({
     client,
@@ -72,6 +75,27 @@ export function BranchSwitcher({
     ),
     [branchLeadingSlot],
   );
+  const renderFooter = useMemo(
+    () => (
+      <Pressable
+        testID="manage-worktrees-trigger"
+        onPress={() => {
+          setIsOpen(false);
+          setIsWorktreesOpen(true);
+        }}
+        style={styles.manageWorktreesFooter}
+        accessibilityRole="button"
+        accessibilityLabel={t("worktrees.manageWorktrees", "Manage Worktrees")}
+      >
+        <ThemedGitBranch size={14} uniProps={foregroundMutedIconColorMapping} />
+        <Text style={styles.manageWorktreesText}>
+          {t("worktrees.manageWorktrees", "Manage Worktrees")}
+        </Text>
+      </Pressable>
+    ),
+    [setIsOpen, t],
+  );
+
 
   if (!currentBranchName) {
     return null;
@@ -112,7 +136,16 @@ export function BranchSwitcher({
         desktopPreventInitialFlash
         desktopMinWidth={280}
         renderOption={renderBranchOption}
+        footer={renderFooter}
       />
+      {workspaceDirectory ? (
+        <WorktreeFleetDrawer
+          visible={isWorktreesOpen}
+          onClose={() => setIsWorktreesOpen(false)}
+          cwd={workspaceDirectory}
+          serverId={serverId}
+        />
+      ) : null}
     </View>
   );
 }
@@ -125,5 +158,20 @@ const styles = StyleSheet.create((theme) => ({
   tooltipText: {
     color: theme.colors.popoverForeground,
     fontSize: theme.fontSize.sm,
+  },
+  manageWorktreesFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+  },
+  manageWorktreesText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foreground,
   },
 }));

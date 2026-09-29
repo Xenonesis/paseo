@@ -4493,6 +4493,13 @@ export class DaemonClient {
     });
   }
 
+  async listPaseoWorktrees(
+    input: { cwd?: string; repoRoot?: string },
+    requestId?: string,
+  ): Promise<PaseoWorktreeListPayload> {
+    return this.getPaseoWorktreeList(input, requestId);
+  }
+
   async archivePaseoWorktree(
     input: {
       worktreePath?: string;
