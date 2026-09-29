@@ -29,6 +29,7 @@ const { theme } = vi.hoisted(() => ({
     shadow: { md: {} },
   },
 }));
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) =>
@@ -47,15 +48,24 @@ vi.mock("lucide-react-native", () => {
   return {
     ArrowLeft: createIcon("ArrowLeft"),
     ArrowRight: createIcon("ArrowRight"),
+    Bot: createIcon("Bot"),
+    Check: createIcon("Check"),
+    Chrome: createIcon("Chrome"),
+    Compass: createIcon("Compass"),
     Copy: createIcon("Copy"),
+    Download: createIcon("Download"),
     ExternalLink: createIcon("ExternalLink"),
+    FileText: createIcon("FileText"),
     Globe: createIcon("Globe"),
+    KeyRound: createIcon("KeyRound"),
     Maximize: createIcon("Maximize"),
     Monitor: createIcon("Monitor"),
     MousePointer2: createIcon("MousePointer2"),
+    Plus: createIcon("Plus"),
     RotateCw: createIcon("RotateCw"),
     Smartphone: createIcon("Smartphone"),
     Tablet: createIcon("Tablet"),
+    X: createIcon("X"),
   };
 });
 
@@ -65,6 +75,8 @@ import {
   parseHostFromUrl,
 } from "./browser-load-failure-overlay";
 import { BrowserNavigationBar } from "./browser-navigation-bar";
+import { BrowserTabBar } from "./browser-tab-bar";
+import { BrowserImportDialog } from "./browser-import-dialog";
 
 describe("browser URL helpers", () => {
   it("parses host from full URL", () => {
@@ -78,6 +90,61 @@ describe("browser URL helpers", () => {
       "https://localhost:3000/medical-inquiry",
     );
     expect(getHttpsRecoveryUrl("https://localhost:3000")).toBeNull();
+  });
+});
+
+describe("BrowserTabBar", () => {
+  it("renders multiple tabs, switches tab, closes tab, and creates new tab", () => {
+    const onSelectTab = vi.fn();
+    const onCloseTab = vi.fn();
+    const onNewTab = vi.fn();
+
+    const tabs = [
+      { id: "tab-1", url: "http://localhost:3000/medical-inquiry", title: "localhost:3000" },
+      { id: "tab-2", url: "http://localhost:5173/dashboard", title: "localhost:5173" },
+    ];
+
+    const { getByTestId, getByText } = render(
+      <BrowserTabBar
+        tabs={tabs}
+        activeTabId="tab-1"
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        onNewTab={onNewTab}
+      />,
+    );
+
+    expect(getByText("localhost:3000")).toBeDefined();
+    expect(getByText("localhost:5173")).toBeDefined();
+
+    fireEvent.click(getByTestId("browser-tab-tab-2"));
+    expect(onSelectTab).toHaveBeenCalledWith("tab-2");
+
+    fireEvent.click(getByTestId("browser-tab-close-tab-2"));
+    expect(onCloseTab).toHaveBeenCalledWith("tab-2");
+
+    fireEvent.click(getByTestId("browser-new-tab-btn"));
+    expect(onNewTab).toHaveBeenCalled();
+  });
+});
+
+describe("BrowserImportDialog", () => {
+  it("renders sources and triggers import callback", () => {
+    const onClose = vi.fn();
+    const onImport = vi.fn();
+
+    const { getByTestId, getByText } = render(
+      <BrowserImportDialog visible={true} onClose={onClose} onImport={onImport} />,
+    );
+
+    expect(getByText("Import Browser Session & Cookies")).toBeDefined();
+    expect(getByTestId("import-source-chrome")).toBeDefined();
+    expect(getByTestId("import-source-edge")).toBeDefined();
+
+    fireEvent.click(getByTestId("import-source-edge"));
+
+    fireEvent.click(getByTestId("browser-import-confirm-btn"));
+    expect(onImport).toHaveBeenCalledWith("", "edge");
   });
 });
 
@@ -136,11 +203,13 @@ describe("BrowserLoadFailureOverlay", () => {
 });
 
 describe("BrowserNavigationBar", () => {
-  it("renders address input, navigation buttons, and responds to navigation", () => {
+  it("renders address input, navigation buttons, import, and send to agent", () => {
     const onNavigate = vi.fn();
     const onGoBack = vi.fn();
     const onGoForward = vi.fn();
     const onReload = vi.fn();
+    const onOpenImport = vi.fn();
+    const onSendToAgent = vi.fn();
 
     const { getByTestId } = render(
       <BrowserNavigationBar
@@ -151,11 +220,21 @@ describe("BrowserNavigationBar", () => {
         onGoBack={onGoBack}
         onGoForward={onGoForward}
         onReload={onReload}
+        onOpenImport={onOpenImport}
+        onSendToAgent={onSendToAgent}
       />,
     );
 
     const input = getByTestId("browser-address-input");
     expect(input).toBeDefined();
+
+    const importBtn = getByTestId("browser-import-btn");
+    fireEvent.click(importBtn);
+    expect(onOpenImport).toHaveBeenCalled();
+
+    const sendAgentBtn = getByTestId("browser-send-agent-btn");
+    fireEvent.click(sendAgentBtn);
+    expect(onSendToAgent).toHaveBeenCalled();
 
     const backBtn = getByTestId("browser-back-btn");
     fireEvent.click(backBtn);

@@ -11,7 +11,9 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   Copy,
+  Download,
   ExternalLink,
   Globe,
   Maximize,
@@ -33,6 +35,8 @@ export interface BrowserNavigationBarProps {
   onGoBack?: () => void;
   onGoForward?: () => void;
   onReload?: () => void;
+  onOpenImport?: () => void;
+  onSendToAgent?: () => void;
   onCopyAddress?: (url: string) => void;
   onOpenExternally?: (url: string) => void;
   onToggleInspect?: () => void;
@@ -51,6 +55,8 @@ export function BrowserNavigationBar({
   onGoBack,
   onGoForward,
   onReload,
+  onOpenImport,
+  onSendToAgent,
   onCopyAddress,
   onOpenExternally,
   onToggleInspect,
@@ -131,6 +137,19 @@ export function BrowserNavigationBar({
 
       {/* Action Tools */}
       <View style={styles.tools}>
+        {onOpenImport ? (
+          <Button
+            size="xs"
+            variant="outline"
+            style={styles.importBtn}
+            onPress={onOpenImport}
+            testID="browser-import-btn"
+          >
+            <Download size={12} color={theme.colors.foreground} />
+            <Text style={styles.importBtnText}>Import</Text>
+          </Button>
+        ) : null}
+
         {onToggleInspect ? (
           <Button
             size="xs"
@@ -140,6 +159,18 @@ export function BrowserNavigationBar({
             testID="browser-inspect-btn"
           >
             <MousePointer2 size={14} color={isInspectActive ? "#fff" : theme.colors.foreground} />
+          </Button>
+        ) : null}
+
+        {onSendToAgent ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            style={styles.iconBtn}
+            onPress={onSendToAgent}
+            testID="browser-send-agent-btn"
+          >
+            <Bot size={15} color={theme.colors.foreground} />
           </Button>
         ) : null}
 
@@ -227,6 +258,18 @@ const styles = StyleSheet.create((theme) => ({
     padding: 0,
     alignItems: "center",
     justifyContent: "center",
+  },
+  importBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 28,
+    paddingHorizontal: theme.spacing[2],
+  },
+  importBtnText: {
+    fontSize: 11,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foreground,
   },
   addressBar: {
     flex: 1,

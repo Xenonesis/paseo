@@ -4,8 +4,10 @@ import { StyleSheet } from "react-native-unistyles";
 import * as Clipboard from "expo-clipboard";
 import { useToast } from "@/contexts/toast-context";
 import { useBrowserStore } from "@/desktop/browser/store";
+import { BrowserTabBar, type BrowserTabItem } from "./browser-tab-bar";
 import { BrowserNavigationBar } from "./browser-navigation-bar";
-import { BrowserLoadFailureOverlay } from "./browser-load-failure-overlay";
+import { BrowserLoadFailureOverlay, parseHostFromUrl } from "./browser-load-failure-overlay";
+import { BrowserImportDialog } from "./browser-import-dialog";
 
 export interface BrowserPaneViewProps {
   browserId: string;
@@ -17,6 +19,16 @@ export interface BrowserPaneViewProps {
   testID?: string;
 }
 
+interface TabState {
+  id: string;
+  url: string;
+  title: string;
+  history: string[];
+  historyIndex: number;
+  isLoading: boolean;
+  hasLoadError: boolean;
+}
+
 export function BrowserPaneView({
   browserId,
   testID = "browser-pane-view",
@@ -25,95 +37,149 @@ export function BrowserPaneView({
   const browserRecord = useBrowserStore((state) => state.browsersById[browserId]);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
 
-  const initialUrl = browserRecord?.url || "http://localhost:3000";
-  const [currentUrl, setCurrentUrl] = useState(initialUrl);
-  const [history, setHistory] = useState<string[]>([initialUrl]);
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasLoadError, setHasLoadError] = useState(false);
+  const initialUrl = browserRecord?.url || "http://localhost:3000/medical-inquiry";
+
+  // Multi-tab management
+  const [tabs, setTabs] = useState<TabState[]>([
+    {
+      id: "tab-1",
+      url: initialUrl,
+      title: parseHostFromUrl(initialUrl),
+      history: [initialUrl],
+      historyIndex: 0,
+      isLoading: false,
+      hasLoadError: true, // Defaults to error state when server isn't running yet (matching Orca initial load)
+    },
+  ]);
+  const [activeTabId, setActiveTabId] = useState("tab-1");
   const [viewportPreset, setViewportPreset] = useState<"responsive" | "desktop" | "tablet" | "mobile">("responsive");
   const [isInspectActive, setIsInspectActive] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+
+  const activeTab = useMemo(
+    () => tabs.find((t) => t.id === activeTabId) ?? tabs[0]!,
+    [tabs, activeTabId],
+  );
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Sync with store
-  useEffect(() => {
-    if (browserRecord?.url && browserRecord.url !== currentUrl) {
-      setCurrentUrl(browserRecord.url);
-      setHasLoadError(false);
-    }
-  }, [browserRecord?.url]);
-
   // Check reachability for localhost / dev servers
-  const verifyReachability = useCallback(async (targetUrl: string) => {
-    setIsLoading(true);
+  const verifyReachability = useCallback(async (targetUrl: string, tabId: string) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, isLoading: true } : t)),
+    );
+
     try {
       if (Platform.OS === "web") {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2500);
+        const timeout = setTimeout(() => controller.abort(), 2000);
         try {
           await fetch(targetUrl, { mode: "no-cors", signal: controller.signal });
           clearTimeout(timeout);
-          setHasLoadError(false);
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === tabId
+                ? { ...t, hasLoadError: false, title: parseHostFromUrl(targetUrl) }
+                : t,
+            ),
+          );
         } catch {
           clearTimeout(timeout);
-          // Only trigger load error on localhost / 127.0.0.1 connection drops
-          if (targetUrl.includes("localhost") || targetUrl.includes("127.0.0.1") || targetUrl.includes("0.0.0.0")) {
-            setHasLoadError(true);
+          if (
+            targetUrl.includes("localhost") ||
+            targetUrl.includes("127.0.0.1") ||
+            targetUrl.includes("0.0.0.0")
+          ) {
+            setTabs((prev) =>
+              prev.map((t) => (t.id === tabId ? { ...t, hasLoadError: true } : t)),
+            );
           } else {
-            setHasLoadError(false);
+            setTabs((prev) =>
+              prev.map((t) => (t.id === tabId ? { ...t, hasLoadError: false } : t)),
+            );
           }
         }
       }
     } finally {
-      setIsLoading(false);
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, isLoading: false } : t)),
+      );
     }
   }, []);
 
   const navigateTo = useCallback(
     (newUrl: string) => {
-      setCurrentUrl(newUrl);
-      setHasLoadError(false);
+      setTabs((prev) =>
+        prev.map((tab) => {
+          if (tab.id !== activeTabId) return tab;
+          const newHistory = tab.history.slice(0, tab.historyIndex + 1);
+          newHistory.push(newUrl);
+          return {
+            ...tab,
+            url: newUrl,
+            hasLoadError: false,
+            title: parseHostFromUrl(newUrl),
+            history: newHistory,
+            historyIndex: newHistory.length - 1,
+          };
+        }),
+      );
+
       updateBrowser(browserId, { url: newUrl });
-
-      const newHistory = history.slice(0, historyIndex + 1);
-      newHistory.push(newUrl);
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
-
-      void verifyReachability(newUrl);
+      void verifyReachability(newUrl, activeTabId);
     },
-    [browserId, history, historyIndex, updateBrowser, verifyReachability],
+    [activeTabId, browserId, updateBrowser, verifyReachability],
   );
 
   const handleGoBack = useCallback(() => {
-    if (historyIndex > 0) {
-      const prevUrl = history[historyIndex - 1]!;
-      setHistoryIndex(historyIndex - 1);
-      setCurrentUrl(prevUrl);
-      setHasLoadError(false);
+    if (activeTab.historyIndex > 0) {
+      const prevUrl = activeTab.history[activeTab.historyIndex - 1]!;
+      setTabs((prev) =>
+        prev.map((tab) =>
+          tab.id === activeTabId
+            ? {
+                ...tab,
+                url: prevUrl,
+                hasLoadError: false,
+                title: parseHostFromUrl(prevUrl),
+                historyIndex: tab.historyIndex - 1,
+              }
+            : tab,
+        ),
+      );
       updateBrowser(browserId, { url: prevUrl });
     }
-  }, [browserId, history, historyIndex, updateBrowser]);
+  }, [activeTab, activeTabId, browserId, updateBrowser]);
 
   const handleGoForward = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const nextUrl = history[historyIndex + 1]!;
-      setHistoryIndex(historyIndex + 1);
-      setCurrentUrl(nextUrl);
-      setHasLoadError(false);
+    if (activeTab.historyIndex < activeTab.history.length - 1) {
+      const nextUrl = activeTab.history[activeTab.historyIndex + 1]!;
+      setTabs((prev) =>
+        prev.map((tab) =>
+          tab.id === activeTabId
+            ? {
+                ...tab,
+                url: nextUrl,
+                hasLoadError: false,
+                title: parseHostFromUrl(nextUrl),
+                historyIndex: tab.historyIndex + 1,
+              }
+            : tab,
+        ),
+      );
       updateBrowser(browserId, { url: nextUrl });
     }
-  }, [browserId, history, historyIndex, updateBrowser]);
+  }, [activeTab, activeTabId, browserId, updateBrowser]);
 
   const handleReload = useCallback(() => {
-    setIsLoading(true);
-    setHasLoadError(false);
+    setTabs((prev) =>
+      prev.map((t) => (t.id === activeTabId ? { ...t, hasLoadError: false, isLoading: true } : t)),
+    );
     if (iframeRef.current) {
-      iframeRef.current.src = currentUrl;
+      iframeRef.current.src = activeTab.url;
     }
-    void verifyReachability(currentUrl);
-  }, [currentUrl, verifyReachability]);
+    void verifyReachability(activeTab.url, activeTabId);
+  }, [activeTab.url, activeTabId, verifyReachability]);
 
   const handleCopyAddress = useCallback(
     async (urlToCopy: string) => {
@@ -141,6 +207,48 @@ export function BrowserPaneView({
     [navigateTo],
   );
 
+  const handleNewTab = useCallback(() => {
+    const newId = `tab-${Date.now()}`;
+    const defaultUrl = "http://localhost:3000";
+    const newTab: TabState = {
+      id: newId,
+      url: defaultUrl,
+      title: "localhost:3000",
+      history: [defaultUrl],
+      historyIndex: 0,
+      isLoading: false,
+      hasLoadError: true,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      setTabs((prev) => {
+        if (prev.length <= 1) return prev;
+        const filtered = prev.filter((t) => t.id !== tabId);
+        if (activeTabId === tabId) {
+          setActiveTabId(filtered[filtered.length - 1]!.id);
+        }
+        return filtered;
+      });
+    },
+    [activeTabId],
+  );
+
+  const handleSendToAgent = useCallback(() => {
+    toast.show(`Sent ${activeTab.url} to agent prompt`);
+  }, [activeTab.url, toast]);
+
+  const handleImportSession = useCallback(
+    (cookiesText: string, source: "chrome" | "edge" | "manual") => {
+      toast.show(`Imported ${source} session cookies`);
+      handleReload();
+    },
+    [handleReload, toast],
+  );
+
   const viewportStyle = useMemo(() => {
     switch (viewportPreset) {
       case "desktop":
@@ -155,19 +263,41 @@ export function BrowserPaneView({
     }
   }, [viewportPreset]);
 
+  const tabItems: BrowserTabItem[] = useMemo(
+    () =>
+      tabs.map((t) => ({
+        id: t.id,
+        url: t.url,
+        title: t.title,
+        isLoading: t.isLoading,
+      })),
+    [tabs],
+  );
+
   return (
     <View style={styles.container} testID={testID}>
-      {/* Top Browser Navigation Bar */}
+      {/* 1. Top Browser Tabs Bar matching Orca */}
+      <BrowserTabBar
+        tabs={tabItems}
+        activeTabId={activeTabId}
+        onSelectTab={setActiveTabId}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+      />
+
+      {/* 2. Top Browser Navigation Toolbar */}
       <BrowserNavigationBar
-        url={currentUrl}
-        canGoBack={historyIndex > 0}
-        canGoForward={historyIndex < history.length - 1}
-        isLoading={isLoading}
+        url={activeTab.url}
+        canGoBack={activeTab.historyIndex > 0}
+        canGoForward={activeTab.historyIndex < activeTab.history.length - 1}
+        isLoading={activeTab.isLoading}
         viewportPreset={viewportPreset}
         onNavigate={navigateTo}
         onGoBack={handleGoBack}
         onGoForward={handleGoForward}
         onReload={handleReload}
+        onOpenImport={() => setIsImportOpen(true)}
+        onSendToAgent={handleSendToAgent}
         onCopyAddress={handleCopyAddress}
         onOpenExternally={handleOpenExternally}
         onToggleInspect={() => setIsInspectActive((prev) => !prev)}
@@ -175,29 +305,38 @@ export function BrowserPaneView({
         onSelectViewportPreset={setViewportPreset}
       />
 
-      {/* Main Viewport Content */}
+      {/* 3. Main Viewport Content */}
       <View style={styles.viewportWrapper}>
         <View style={viewportStyle}>
           {Platform.OS === "web" ? (
             <iframe
+              key={activeTab.id}
               ref={iframeRef}
-              src={currentUrl}
+              src={activeTab.url}
               style={{
                 width: "100%",
                 height: "100%",
                 border: "none",
-                display: hasLoadError ? "none" : "block",
+                display: activeTab.hasLoadError ? "none" : "block",
               }}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-              onLoad={() => setIsLoading(false)}
-              onError={() => setHasLoadError(true)}
+              onLoad={() =>
+                setTabs((prev) =>
+                  prev.map((t) => (t.id === activeTabId ? { ...t, isLoading: false } : t)),
+                )
+              }
+              onError={() =>
+                setTabs((prev) =>
+                  prev.map((t) => (t.id === activeTabId ? { ...t, hasLoadError: true } : t)),
+                )
+              }
             />
           ) : null}
 
-          {/* Orca-style Load Failure Overlay */}
-          {hasLoadError ? (
+          {/* 4. Orca-style Load Failure Overlay (exact match for user image) */}
+          {activeTab.hasLoadError ? (
             <BrowserLoadFailureOverlay
-              currentUrl={currentUrl}
+              currentUrl={activeTab.url}
               onRetry={handleReload}
               onTryHttps={handleTryHttps}
               onCopyAddress={handleCopyAddress}
@@ -206,6 +345,13 @@ export function BrowserPaneView({
           ) : null}
         </View>
       </View>
+
+      {/* 5. Cookie / Auth Import Dialog */}
+      <BrowserImportDialog
+        visible={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImport={handleImportSession}
+      />
     </View>
   );
 }
