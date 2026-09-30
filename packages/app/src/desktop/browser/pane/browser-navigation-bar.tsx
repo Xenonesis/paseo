@@ -153,7 +153,9 @@ export function BrowserNavigationBar({
                 <Text style={styles.importBtnText}>Import</Text>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Import browser cookies & sessions (Chrome/Edge)</TooltipContent>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Import browser cookies & sessions (Chrome/Edge)</Text>
+            </TooltipContent>
           </Tooltip>
         ) : null}
 
@@ -170,7 +172,9 @@ export function BrowserNavigationBar({
                 <MousePointer2 size={14} color={isInspectActive ? "#fff" : theme.colors.foreground} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Inspect & select element on webpage</TooltipContent>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Inspect & select element on webpage</Text>
+            </TooltipContent>
           </Tooltip>
         ) : null}
 
@@ -187,7 +191,9 @@ export function BrowserNavigationBar({
                 <Bot size={15} color={theme.colors.foreground} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Send current URL to AI Agent</TooltipContent>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Send current URL to AI Agent</Text>
+            </TooltipContent>
           </Tooltip>
         ) : null}
 
@@ -204,7 +210,9 @@ export function BrowserNavigationBar({
                 <Copy size={14} color={theme.colors.foreground} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Copy URL to clipboard</TooltipContent>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Copy URL to clipboard</Text>
+            </TooltipContent>
           </Tooltip>
         ) : null}
 
@@ -221,7 +229,9 @@ export function BrowserNavigationBar({
                 <ExternalLink size={14} color={theme.colors.foreground} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Open in default browser (Chrome/Edge)</TooltipContent>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Open in default browser (Chrome/Edge)</Text>
+            </TooltipContent>
           </Tooltip>
         ) : null}
         {onSelectViewportPreset ? (
@@ -342,5 +352,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   viewportBtnActive: {
     backgroundColor: theme.colors.surface3,
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.xs,
+    color: "#ffffff",
+    fontWeight: theme.fontWeight.medium,
   },
 }));
