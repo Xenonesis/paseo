@@ -27,6 +27,7 @@ export const ja: TranslationResources = {
     total: "{{total}} 件の一致",
   },
   common: {
+    bottomSheetBackdrop: "ボトムシートの背景",
     back: "戻る",
     loading: "読み込み中...",
     actions: {
@@ -1161,6 +1162,9 @@ export const ja: TranslationResources = {
       settings: "設定",
       closeSidebar: "サイドバーを閉じる",
     },
+    footer: {
+      usage: "使用状況",
+    },
     help: {
       trigger: "ヘルプとサポート",
       sectionHelp: "ヘルプ",
@@ -1637,6 +1641,17 @@ export const ja: TranslationResources = {
     hostPassword: {
       title: "{{host}} のパスワード",
       label: "ホストのパスワード",
+    },
+    hostConfirmation: {
+      title: "このホストに接続しますか？",
+      description:
+        "このホストはこのアプリ内でコードを実行し、接続中の他のホストにアクセスできるようになります。心当たりがある場合のみ接続してください。",
+      descriptionChanged:
+        "このリンクはこのホストへの接続方法を変更します。ホストはこのアプリ内でコードを実行し、接続中の他のホストにアクセスできるようになります。心当たりがある場合のみ接続してください。",
+      hostLabel: "ホスト",
+      fingerprintLabel: "鍵のフィンガープリント",
+      relayLabel: "リレー",
+      connect: "接続",
     },
     connectionMethods: {
       title: "接続を追加",
@@ -2187,8 +2202,15 @@ export const ja: TranslationResources = {
         description: "プロンプト間を移動するためのアウトラインを表示します",
       },
       sidebar: {
-        title: "サイドバー",
-        description: "サイドバー上部に表示する項目とその順序を選択します",
+        header: {
+          title: "ヘッダー",
+          description: "サイドバー上部に表示する項目とその順序を選択します",
+        },
+        footer: {
+          title: "フッター",
+          description:
+            "サイドバー下部に表示する行とその順序を選択します。プロジェクトを追加とアイコンの行は常に表示されます",
+        },
         moveUp: "上に移動",
         moveDown: "下に移動",
       },

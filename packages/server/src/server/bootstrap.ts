@@ -731,7 +731,6 @@ export async function createPaseoDaemon(
     // Tauri desktop renderers
     "http://tauri.localhost",
     "tauri://localhost",
-    // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [
           `http://${listenTarget.host}:${listenTarget.port}`,
@@ -1741,6 +1740,7 @@ export async function createPaseoDaemon(
             );
             pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();
+            providerSnapshotManager.settlePluginProviders();
             wsServer.beginAcceptingConnections();
             relayRuntime = createRelayRuntime({
               config: {
