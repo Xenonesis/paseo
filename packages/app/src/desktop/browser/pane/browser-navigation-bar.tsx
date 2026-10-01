@@ -8,6 +8,8 @@ import {
   View,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { parseHostFromUrl } from "./browser-load-failure-overlay";
+import { normalizeAddressBarInput } from "./url-utils";
 import {
   ArrowLeft,
   ArrowRight,
@@ -72,14 +74,10 @@ export function BrowserNavigationBar({
   }, [url]);
 
   const handleSubmit = useCallback(() => {
-    let clean = addressInput.trim();
+    const clean = addressInput.trim();
     if (!clean) return;
-    if (!clean.startsWith("http://") && !clean.startsWith("https://") && !clean.startsWith("about:")) {
-      clean = clean.startsWith("localhost") || clean.startsWith("127.0.0.1") || clean.startsWith("0.0.0.0")
-        ? `http://${clean}`
-        : `https://${clean}`;
-    }
-    onNavigate(clean);
+    const resolvedUrl = normalizeAddressBarInput(clean);
+    onNavigate(resolvedUrl);
   }, [addressInput, onNavigate]);
 
   return (

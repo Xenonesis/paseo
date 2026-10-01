@@ -40,7 +40,15 @@ export function useSendBrowserUrlToAgent(input?: { serverId?: string; workspaceI
         }
       }
 
-      const textToAppend = title ? `\nReferenced page: ${title} (${url})` : `\n${url}`;
+      const isContextPayload =
+        typeof title === "string" &&
+        (title.startsWith("Attached browser context") || title.startsWith("Inspected Element"));
+
+      const textToAppend = isContextPayload
+        ? `\n\n${title}\n`
+        : title
+          ? `\nReferenced page: ${title} (${url})`
+          : `\n${url}`;
 
       if (targetDraftKey) {
         const currentInput = useDraftStore.getState().getDraftInput(targetDraftKey);
@@ -56,7 +64,8 @@ export function useSendBrowserUrlToAgent(input?: { serverId?: string; workspaceI
           layoutStore.focusTab(targetWorkspaceKey, targetTabId);
         }
 
-        toast.show(`Appended ${url} to active prompt`);
+        const toastSubject = isContextPayload ? "browser context" : url;
+        toast.show(`Appended ${toastSubject} to active prompt`);
       } else {
         // Fallback: save to default scratch draft and notify user
         const defaultKey = `draft:${serverId}:scratch`;
@@ -69,7 +78,8 @@ export function useSendBrowserUrlToAgent(input?: { serverId?: string; workspaceI
           draft: { text: nextText, attachments: [] },
         });
 
-        toast.show(`Saved ${url} to agent draft`);
+        const toastSubject = isContextPayload ? "browser context" : url;
+        toast.show(`Saved ${toastSubject} to agent draft`);
       }
     },
     [serverId, toast],

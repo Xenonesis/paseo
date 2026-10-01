@@ -11,6 +11,8 @@ import { BrowserLoadFailureOverlay, parseHostFromUrl } from "@/desktop/browser/p
 import { BrowserImportDialog } from "@/desktop/browser/pane/browser-import-dialog";
 import { isLocalhostUrl, resolveIframeTargetUrl } from "@/desktop/browser/pane/url-utils";
 import { useSendBrowserUrlToAgent } from "@/desktop/browser/pane/use-send-browser-url-to-agent";
+import { InteractiveInspectOverlay } from "@/desktop/browser/pane/interactive-inspect-overlay";
+import { formatGrabPayloadAsText, type BrowserGrabPayload } from "@/desktop/browser/pane/browser-grab-payload";
 import { withPreviewCsp } from "./html-preview-csp";
 import { useInlinedHtmlAssets } from "./use-inlined-html-assets";
 
@@ -299,6 +301,25 @@ export function FileHtmlPreview({
               />
             )
           ) : null}
+          {/* Interactive Inspect Overlay on top of iframe */}
+          <InteractiveInspectOverlay
+            active={isInspectActive}
+            iframeRef={iframeRef}
+            onSelectElement={(target) => {
+              const elementDesc = `${target.tag}${target.id ? `#${target.id}` : ""}: "${(target.textSnippet || target.textContent || "").slice(0, 40)}"`;
+              toast.show(`Selected element: ${elementDesc}`);
+              setIsInspectActive(false);
+              const payload: BrowserGrabPayload = {
+                url: activeTab.url || target.payload?.url || (filePath ? `file://${filePath}` : "about:blank"),
+                title: activeTab.title || target.payload?.title || (filePath ? filePath : undefined),
+                target,
+                timestamp: target.payload?.timestamp ?? Date.now(),
+              };
+              const formattedText = formatGrabPayloadAsText(payload);
+              void sendToAgent(activeTab.url, formattedText);
+            }}
+            onCancel={() => setIsInspectActive(false)}
+          />
 
           {/* 4. Orca-style Load Failure Overlay if URL unreachable */}
           {activeTab.hasLoadError ? (

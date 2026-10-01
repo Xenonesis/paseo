@@ -8,9 +8,11 @@ import { BrowserTabBar, type BrowserTabItem } from "./browser-tab-bar";
 import { BrowserNavigationBar } from "./browser-navigation-bar";
 import { BrowserLoadFailureOverlay, parseHostFromUrl } from "./browser-load-failure-overlay";
 import { BrowserImportDialog } from "./browser-import-dialog";
-import { isLocalhostUrl, resolveIframeTargetUrl } from "./url-utils";
+import { isLocalhostUrl, normalizeAddressBarInput, resolveIframeTargetUrl } from "./url-utils";
 import { useSendBrowserUrlToAgent } from "./use-send-browser-url-to-agent";
 import { INSPECT_INJECTOR_SCRIPT } from "./inspect-injector";
+import { InteractiveInspectOverlay, type InspectTargetInfo } from "./interactive-inspect-overlay";
+import { formatGrabPayloadAsText, type BrowserGrabPayload } from "./browser-grab-payload";
 
 export interface BrowserPaneViewProps {
   browserId: string;
@@ -34,6 +36,8 @@ interface TabState {
 
 export function BrowserPaneView({
   browserId,
+  serverId,
+  workspaceId,
   testID = "browser-pane-view",
 }: BrowserPaneViewProps) {
   const toast = useToast();
@@ -68,15 +72,23 @@ export function BrowserPaneView({
 
   // Check reachability for localhost / dev servers
   const verifyReachability = useCallback(async (targetUrl: string, tabId: string) => {
+    if (!targetUrl || targetUrl === "about:blank") {
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, hasLoadError: false, isLoading: false, title: "New Tab" } : t)),
+      );
+      return;
+    }
+
     // External websites are proxied by daemon, so they won't encounter CORS / X-Frame-Options issues
     if (!isLocalhostUrl(targetUrl)) {
       setTabs((prev) =>
         prev.map((t) =>
-          t.id === tabId ? { ...t, hasLoadError: false, title: parseHostFromUrl(targetUrl) } : t,
+          t.id === tabId ? { ...t, hasLoadError: false, isLoading: false, title: parseHostFromUrl(targetUrl) } : t,
         ),
       );
       return;
     }
+
 
     setTabs((prev) =>
       prev.map((t) => (t.id === tabId ? { ...t, isLoading: true } : t)),
@@ -111,7 +123,8 @@ export function BrowserPaneView({
   }, []);
 
   const navigateTo = useCallback(
-    (newUrl: string) => {
+    (inputUrl: string) => {
+      const newUrl = normalizeAddressBarInput(inputUrl);
       setTabs((prev) =>
         prev.map((tab) => {
           if (tab.id !== activeTabId) return tab;
@@ -272,14 +285,29 @@ export function BrowserPaneView({
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       if (event.data?.type === "PASEO_INSPECT_ELEMENT_SELECTED") {
-        const { tag, id, text, snippet } = event.data.payload || {};
-        const elementDesc = `${tag}${id ? `#${id}` : ""}: "${text.slice(0, 40)}"`;
+        const { tag, id, text, snippet } = (event.data.payload || {}) as {
+          tag?: string;
+          id?: string;
+          text?: string;
+          snippet?: string;
+        };
+        const elementDesc = `${tag || "element"}${id ? `#${id}` : ""}: "${(text || "").slice(0, 40)}"`;
         toast.show(`Selected element: ${elementDesc}`);
         setIsInspectActive(false);
-        void sendToAgent(
-          activeTab.url,
-          `Inspected Element <${tag}${id ? ` id="${id}"` : ""}>: ${snippet}`,
-        );
+        const payload: BrowserGrabPayload = {
+          url: activeTab.url,
+          title: activeTab.title,
+          target: {
+            tag: tag || "div",
+            id: id || undefined,
+            selector: tag ? `${tag}${id ? `#${id}` : ""}` : "",
+            rect: { left: 0, top: 0, width: 0, height: 0 },
+            textContent: text || "",
+            html: snippet,
+          },
+        };
+        const formattedText = formatGrabPayloadAsText(payload);
+        void sendToAgent(activeTab.url, formattedText);
       }
     };
     window.addEventListener("message", handleWindowMessage);
@@ -394,6 +422,26 @@ export function BrowserPaneView({
               }
             />
           ) : null}
+
+          {/* Interactive Inspect Overlay on top of iframe */}
+          <InteractiveInspectOverlay
+            active={isInspectActive}
+            iframeRef={iframeRef}
+            onSelectElement={(target) => {
+              const elementDesc = `${target.tag}${target.id ? `#${target.id}` : ""}: "${(target.textSnippet || target.textContent || "").slice(0, 40)}"`;
+              toast.show(`Selected element: ${elementDesc}`);
+              setIsInspectActive(false);
+              const payload: BrowserGrabPayload = {
+                url: activeTab.url || target.payload?.url || "",
+                title: activeTab.title || target.payload?.title,
+                target,
+                timestamp: target.payload?.timestamp ?? Date.now(),
+              };
+              const formattedText = formatGrabPayloadAsText(payload);
+              void sendToAgent(activeTab.url, formattedText);
+            }}
+            onCancel={() => setIsInspectActive(false)}
+          />
 
           {/* 4. Orca-style Load Failure Overlay (exact match for user image) */}
           {activeTab.hasLoadError ? (
