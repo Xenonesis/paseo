@@ -776,8 +776,7 @@ export async function createPaseoDaemon(
   );
 
   // In-app browser proxy to stream and render websites (like google.com) inside iframes
-  app.all("/api/browser-proxy", createBrowserProxyHandler(logger));
-
+  app.use("/api/browser-proxy", createBrowserProxyHandler(logger));
   // Serve the bundled browser web UI when enabled. Mounted after service-proxy
   // classification and host/CORS handling, but before daemon bearer auth, so
   // static app files load without the daemon password while API/WebSocket calls

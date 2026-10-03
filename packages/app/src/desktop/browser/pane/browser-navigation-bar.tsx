@@ -21,6 +21,7 @@ import {
   Maximize,
   Monitor,
   MousePointer2,
+  PenTool,
   RotateCw,
   Smartphone,
   Tablet,
@@ -43,6 +44,8 @@ export interface BrowserNavigationBarProps {
   onOpenExternally?: (url: string) => void;
   onToggleInspect?: () => void;
   isInspectActive?: boolean;
+  onToggleMarkup?: () => void;
+  isMarkupActive?: boolean;
   onSelectViewportPreset?: (preset: "responsive" | "desktop" | "tablet" | "mobile") => void;
   testID?: string;
 }
@@ -63,6 +66,8 @@ export function BrowserNavigationBar({
   onOpenExternally,
   onToggleInspect,
   isInspectActive = false,
+  onToggleMarkup,
+  isMarkupActive = false,
   onSelectViewportPreset,
   testID = "browser-navigation-bar",
 }: BrowserNavigationBarProps) {
@@ -176,6 +181,24 @@ export function BrowserNavigationBar({
           </Tooltip>
         ) : null}
 
+        {onToggleMarkup ? (
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="xs"
+                variant={isMarkupActive ? "default" : "ghost"}
+                style={styles.iconBtn}
+                onPress={onToggleMarkup}
+                testID="browser-markup-btn"
+              >
+                <PenTool size={14} color={isMarkupActive ? "#fff" : theme.colors.foreground} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>Draw visual annotations & crops for agent</Text>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {onSendToAgent ? (
           <Tooltip>
             <TooltipTrigger>

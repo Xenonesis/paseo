@@ -3,7 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import { URL } from "node:url";
 import type { Logger } from "pino";
-
+import { readChromiumCookiesForHost } from "./browser-tools/chromium-cookie-paths.js";
 const DESKTOP_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -61,18 +61,26 @@ export function injectBaseTagIntoHtml(html: string, targetUrl: string): string {
 
 export function createBrowserProxyHandler(logger?: Logger): RequestHandler {
   return (req: Request, res: Response): void => {
-    // Cookie management endpoint
+    // Cookie management and local browser auto-import endpoint
     if (req.method === "POST" && req.path.endsWith("/cookies")) {
-      const { host, cookies } = (req.body as { host?: string; cookies?: string }) || {};
+      const { host, cookies, browser } =
+        (req.body as { host?: string; cookies?: string; browser?: "chrome" | "edge" | "brave" }) || {};
+      if (browser && host) {
+        const imported = readChromiumCookiesForHost(browser, host);
+        if (imported.cookies) {
+          setDomainCookies(host, imported.cookies);
+        }
+        res.json({ ok: true, host, count: imported.count, browser });
+        return;
+      }
       if (host && typeof cookies === "string") {
         setDomainCookies(host, cookies);
         res.json({ ok: true, host, count: cookies.split(";").length });
         return;
       }
-      res.status(400).json({ error: "Missing host or cookies in body" });
+      res.status(400).json({ error: "Missing host, cookies, or browser in body" });
       return;
     }
-
     const rawTarget = req.query.url;
     if (!rawTarget || typeof rawTarget !== "string") {
       res.status(400).json({ error: "Missing required 'url' query parameter" });

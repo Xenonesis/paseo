@@ -13,7 +13,8 @@ import { useSendBrowserUrlToAgent } from "./use-send-browser-url-to-agent";
 import { INSPECT_INJECTOR_SCRIPT } from "./inspect-injector";
 import { InteractiveInspectOverlay, type InspectTargetInfo } from "./interactive-inspect-overlay";
 import { formatGrabPayloadAsText, type BrowserGrabPayload } from "./browser-grab-payload";
-
+import { BrowserMarkupOverlay } from "./browser-markup-overlay";
+import type { BrowserAnnotationPayload } from "./browser-markup-types";
 export interface BrowserPaneViewProps {
   browserId: string;
   serverId?: string;
@@ -61,8 +62,8 @@ export function BrowserPaneView({
   const [activeTabId, setActiveTabId] = useState("tab-1");
   const [viewportPreset, setViewportPreset] = useState<"responsive" | "desktop" | "tablet" | "mobile">("responsive");
   const [isInspectActive, setIsInspectActive] = useState(false);
+  const [isMarkupActive, setIsMarkupActive] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
-
   const activeTab = useMemo(
     () => tabs.find((t) => t.id === activeTabId) ?? tabs[0]!,
     [tabs, activeTabId],
@@ -391,9 +392,10 @@ export function BrowserPaneView({
         onOpenExternally={handleOpenExternally}
         onToggleInspect={() => setIsInspectActive((prev) => !prev)}
         isInspectActive={isInspectActive}
+        onToggleMarkup={() => setIsMarkupActive((prev) => !prev)}
+        isMarkupActive={isMarkupActive}
         onSelectViewportPreset={setViewportPreset}
       />
-
       {/* 3. Main Viewport Content */}
       <View style={styles.viewportWrapper}>
         <View style={viewportStyle}>
@@ -408,11 +410,10 @@ export function BrowserPaneView({
                 border: "none",
                 display: activeTab.hasLoadError ? "none" : "block",
               }}
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
               onLoad={() => {
                 injectInspectorIntoIframe();
                 setTabs((prev) =>
-                  prev.map((t) => (t.id === activeTabId ? { ...t, isLoading: false } : t)),
+                  prev.map((t) => (t.id === activeTabId ? { ...t, isLoading: false, hasLoadError: false } : t)),
                 );
               }}
               onError={() =>
@@ -443,6 +444,18 @@ export function BrowserPaneView({
             onCancel={() => setIsInspectActive(false)}
           />
 
+          {/* Visual Annotation & Markup Overlay */}
+          <BrowserMarkupOverlay
+            active={isMarkupActive}
+            url={activeTab.url}
+            title={activeTab.title}
+            onClose={() => setIsMarkupActive(false)}
+            onSendToAgent={(payload: BrowserAnnotationPayload) => {
+              const summary = `Visual Annotation on ${payload.url}:\n${payload.textComment ? `Note: "${payload.textComment}"\n` : ""}${payload.shapes.length} shape(s) drawn (viewport: ${payload.viewport.width}x${payload.viewport.height}).`;
+              toast.show("Annotation sent to agent");
+              void sendToAgent(payload.url, summary);
+            }}
+          />
           {/* 4. Orca-style Load Failure Overlay (exact match for user image) */}
           {activeTab.hasLoadError ? (
             <BrowserLoadFailureOverlay
